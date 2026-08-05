@@ -78,6 +78,81 @@ kindle-sync install-agent
 A partir de aquí no tienes que hacer nada: subrayas leyendo, y en unos minutos
 aparece en Obsidian.
 
+## Cómo probarlo con tu Kindle
+
+Cinco pasos, de menos a más comprometido. No pases al siguiente hasta que el
+anterior te dé lo que esperas.
+
+**1. Ver qué encuentra en tu cuenta** (no escribe nada, solo lee):
+
+```bash
+kindle-sync libros
+```
+
+Debería salir algo así:
+
+```
+Sapiens                          tienda      34 subrayado(s)
+Informe interno 2025             personal    12 subrayado(s)
+
+2 libro(s), 1 importado(s) por ti, 46 subrayado(s) en total.
+```
+
+Lo que tienes que comprobar: **que tus libros importados aparecen marcados como
+`personal` y con subrayados**. Si aparecen con 0, o no aparecen, ve al final de
+esta sección.
+
+**2. Ensayo en seco**, para ver cuántas notas se crearían:
+
+```bash
+kindle-sync sync --dry-run
+```
+
+**3. Sincronización de verdad** y a mirar el resultado en Obsidian:
+
+```bash
+kindle-sync sync
+kindle-sync status
+```
+
+**4. La prueba que de verdad importa: el ciclo en vivo.**
+
+1. Coge el Kindle, abre uno de tus libros importados y **subraya una frase que
+   reconozcas** (algo raro, para buscarlo luego sin dudas).
+2. Asegúrate de que el Kindle tiene Wi-Fi. Para forzar la subida:
+   *Ajustes → Sincronizar y buscar elementos*.
+3. Espera un minuto y lanza:
+
+   ```bash
+   kindle-sync sync --verbose
+   ```
+
+Si tu frase aparece en la nota del libro dentro de Obsidian, el ciclo completo
+funciona. Todo lo demás es automatizarlo.
+
+**5. Dejarlo automático:**
+
+```bash
+kindle-sync install-agent
+tail -f ~/.local/state/kindle-sync/kindle-sync.log
+```
+
+Subraya otra frase, sincroniza el Kindle, y en menos de 5 minutos deberías ver
+la línea en el log sin haber tocado nada.
+
+### Si el paso 1 no sale bien
+
+El punto frágil es que Amazon cambie el HTML de su web sin avisar. Para verlo:
+
+```bash
+kindle-sync libros --dump ~/Escritorio/kindle-dump
+```
+
+Eso guarda el HTML y una captura de la página tal y como la ve el programa.
+Con esos ficheros se arreglan los selectores en
+`kindle_sync/sources/amazon_cloud.py`, y los ejemplos de `tests/fixtures/`
+se actualizan a partir de ellos.
+
 ## Comandos
 
 | Comando | Qué hace |
@@ -88,6 +163,8 @@ aparece en Obsidian.
 | `kindle-sync sync --dry-run` | Enseña qué haría, sin escribir |
 | `kindle-sync sync --source clippings` | Solo desde el cable USB |
 | `kindle-sync sync --source cloud` | Solo desde la nube |
+| `kindle-sync libros` | Diagnóstico: qué ve el programa en tu cuenta de Amazon |
+| `kindle-sync libros --dump CARPETA` | Además guarda el HTML y capturas, para depurar |
 | `kindle-sync watch` | Vigila en primer plano (útil para depurar) |
 | `kindle-sync status` | Estado: destino, Kindle conectado, sesión, agente |
 | `kindle-sync rebuild` | Regenera todos los `.md` desde el estado guardado |
@@ -163,6 +240,11 @@ tail -f ~/.local/state/kindle-sync/kindle-sync.log
 ## Desarrollo
 
 ```bash
-pip install -e ".[dev]"
+pip install -e ".[dev,nube]"
+python -m playwright install chromium
 pytest
 ```
+
+Los tests del scraper levantan un Chromium contra copias locales del HTML de
+Amazon (`tests/fixtures/`), así que no dependen de la red ni de tu cuenta. Si
+Chromium no está instalado, esos tests se saltan solos.

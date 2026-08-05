@@ -36,6 +36,11 @@ def main(argv: list[str] | None = None) -> int:
     p_sync.add_argument("--dry-run", action="store_true",
                         help="enseña qué haría sin escribir nada")
 
+    p_libros = sub.add_parser(
+        "libros", help="diagnóstico: lista lo que el programa ve en tu cuenta de Amazon")
+    p_libros.add_argument("--dump", metavar="CARPETA", type=Path,
+                          help="guarda el HTML y capturas para depurar")
+
     sub.add_parser("watch", help="vigila en segundo plano y sincroniza solo")
     sub.add_parser("rebuild", help="regenera los .md desde el estado guardado")
     sub.add_parser("status", help="muestra configuración y estado actual")
@@ -48,6 +53,14 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return _dispatch(args)
     except FileNotFoundError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except ImportError:
+        print("error: falta Playwright, necesario para leer de la nube.\n"
+              '  pip install "kindle-sync[nube]" && python -m playwright install chromium',
+              file=sys.stderr)
+        return 2
+    except RuntimeError as exc:  # incluye NotLoggedIn
         print(f"error: {exc}", file=sys.stderr)
         return 2
     except KeyboardInterrupt:
@@ -65,6 +78,9 @@ def _dispatch(args) -> int:
         from .sources.amazon_cloud import login
         login(cfg.SESSION_FILE, headless=args.headless)
         return 0
+
+    if args.cmd == "libros":
+        return _libros(args.dump)
 
     if args.cmd == "install-agent":
         return _install_agent()
@@ -94,6 +110,31 @@ def _dispatch(args) -> int:
         return 0
 
     return 1
+
+
+def _libros(dump: Path | None) -> int:
+    from .sources.amazon_cloud import list_books
+
+    libros = list_books(cfg.SESSION_FILE, dump_dir=dump)
+    if not libros:
+        print("Amazon no ha devuelto ningún libro.")
+        print("Si tu biblioteca no está vacía, la página ha cambiado:")
+        print("  kindle-sync libros --dump ~/Desktop/kindle-dump")
+        return 1
+
+    ancho = min(60, max(len(b["titulo"]) for b in libros))
+    personales = 0
+    for b in sorted(libros, key=lambda b: -b["subrayados"]):
+        tipo = "personal" if b["documento_personal"] else "tienda  "
+        personales += b["documento_personal"]
+        print(f"{b['titulo'][:ancho]:<{ancho}}  {tipo}  {b['subrayados']:>4} subrayado(s)")
+
+    total = sum(b["subrayados"] for b in libros)
+    print(f"\n{len(libros)} libro(s), {personales} importado(s) por ti, "
+          f"{total} subrayado(s) en total.")
+    if dump:
+        print(f"Volcado guardado en {dump}")
+    return 0
 
 
 def _status(conf: cfg.Config) -> int:

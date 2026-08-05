@@ -14,6 +14,7 @@ Usa Playwright con una sesión guardada; el login se hace una sola vez a mano
 from __future__ import annotations
 
 import re
+from contextlib import contextmanager
 from pathlib import Path
 
 from ..models import Highlight
@@ -46,39 +47,76 @@ def login(state_file: Path, headless: bool = False, timeout_s: int = 300) -> Non
     print(f"Sesión guardada en {state_file}")
 
 
-def fetch(state_file: Path, only_personal_docs: bool = False,
-          timeout_s: int = 60) -> list[Highlight]:
-    """Descarga todos los subrayados del Cuaderno de Kindle."""
+@contextmanager
+def _notebook(state_file: Path, timeout_s: int = 60):
+    """Abre el Cuaderno de Kindle con la sesión guardada."""
     from playwright.sync_api import TimeoutError as PWTimeout
     from playwright.sync_api import sync_playwright
 
     if not state_file.exists():
         raise NotLoggedIn("No hay sesión guardada. Ejecuta primero: kindle-sync login")
 
-    out: list[Highlight] = []
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        context = browser.new_context(storage_state=str(state_file))
-        page = context.new_page()
-        page.set_default_timeout(timeout_s * 1000)
-        page.goto(NOTEBOOK_URL, wait_until="domcontentloaded")
-
         try:
-            page.wait_for_selector("#kp-notebook-library", timeout=20_000)
-        except PWTimeout as exc:
+            context = browser.new_context(storage_state=str(state_file))
+            page = context.new_page()
+            page.set_default_timeout(timeout_s * 1000)
+            page.goto(NOTEBOOK_URL, wait_until="domcontentloaded")
+            try:
+                page.wait_for_selector("#kp-notebook-library", timeout=20_000)
+            except PWTimeout as exc:
+                raise NotLoggedIn(
+                    "La sesión de Amazon ha caducado o la página ha cambiado. "
+                    "Prueba: kindle-sync login (y si persiste, kindle-sync libros --dump)"
+                ) from exc
+            yield page
+            context.storage_state(path=str(state_file))  # refresca cookies
+        finally:
             browser.close()
-            raise NotLoggedIn(
-                "La sesión de Amazon ha caducado. Ejecuta: kindle-sync login") from exc
 
-        books = _library(page)
-        for asin, title, author, is_personal in books:
+
+def fetch(state_file: Path, only_personal_docs: bool = False,
+          timeout_s: int = 60) -> list[Highlight]:
+    """Descarga todos los subrayados del Cuaderno de Kindle."""
+    out: list[Highlight] = []
+    with _notebook(state_file, timeout_s) as page:
+        for asin, title, author, is_personal in _library(page):
             if only_personal_docs and not is_personal:
                 continue
             out.extend(_book_highlights(page, asin, title, author))
-
-        context.storage_state(path=str(state_file))  # refresca cookies
-        browser.close()
     return out
+
+
+def list_books(state_file: Path, dump_dir: Path | None = None,
+               timeout_s: int = 60) -> list[dict]:
+    """Diagnóstico de solo lectura: qué ve el programa en tu cuenta.
+
+    Con `dump_dir` guarda el HTML de las páginas, que es lo que necesitamos
+    para arreglar los selectores si Amazon cambia su web.
+    """
+    out: list[dict] = []
+    with _notebook(state_file, timeout_s) as page:
+        if dump_dir:
+            _dump(page, dump_dir, "biblioteca")
+        for i, (asin, title, author, is_personal) in enumerate(_library(page)):
+            highlights = _book_highlights(page, asin, title, author)
+            if dump_dir and i == 0:
+                _dump(page, dump_dir, "primer-libro")
+            out.append({
+                "asin": asin,
+                "titulo": title,
+                "autor": author,
+                "documento_personal": is_personal,
+                "subrayados": len(highlights),
+            })
+    return out
+
+
+def _dump(page, dump_dir: Path, nombre: str) -> None:
+    dump_dir.mkdir(parents=True, exist_ok=True)
+    (dump_dir / f"{nombre}.html").write_text(page.content(), encoding="utf-8")
+    page.screenshot(path=str(dump_dir / f"{nombre}.png"), full_page=True)
 
 
 def _library(page) -> list[tuple[str, str, str | None, bool]]:
@@ -126,7 +164,7 @@ def _book_highlights(page, asin: str, title: str, author: str | None) -> list[Hi
             book_title=title,
             book_author=author,
             text=text or note,
-            note=note if text else None,
+            note=(note or None) if text else None,
             kind="highlight" if text else "note",
             page=page_m.group(1) if page_m else None,
             location=location,
