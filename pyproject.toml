@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kindle-sync"
+version = "0.1.0"
+description = "Sincroniza los subrayados del Kindle con tus notas de Obsidian"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+# Necesario solo para la fuente «nube» (read.amazon.com).
+nube = ["playwright>=1.40"]
+dev = ["pytest>=7"]
+
+[project.scripts]
+kindle-sync = "kindle_sync.cli:main"
+
+[tool.setuptools]
+packages = ["kindle_sync", "kindle_sync.sources", "kindle_sync.sinks"]
+
+[tool.setuptools.package-data]
+"kindle_sync" = ["agent.plist.template"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
