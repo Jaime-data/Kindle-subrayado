@@ -139,3 +139,9 @@ def test_prueba_variantes_de_la_consulta(monkeypatch, sesion, api_con_bundle):
     assert len(variantes) == len(web_reader.VARIANTES)
     assert all(v["estado"] == 200 for v in variantes)
     assert all(v["json"] for v in variantes)
+
+
+def test_la_consulta_no_manda_un_paginationToken_vacio():
+    """Con paginationToken vacío, Amazon responde 500."""
+    assert "paginationToken=&" not in web_reader.CONSULTA
+    assert "libraryType={tipo}" in web_reader.CONSULTA

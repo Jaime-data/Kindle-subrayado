@@ -190,8 +190,8 @@ def _elemento(page, selector: str) -> str:
 TIPOS_BIBLIOTECA = ("BOOKS", "DOCS", "PDOC", "PERSONAL_DOCS", "KINDLE_DOCS",
                     "ALL", "SAMPLES", "AUDIBLE")
 
-CONSULTA = ("/kindle-library/search"
-            "?query=&libraryType={tipo}&paginationToken=&sortType=recency&querySize=50")
+# Un paginationToken vacío hace que Amazon devuelva 500: se omite.
+CONSULTA = "/kindle-library/search?libraryType={tipo}&sortType=recency&querySize=50"
 
 
 def explorar_biblioteca(state_file: Path, tipos: tuple[str, ...] = TIPOS_BIBLIOTECA,
@@ -299,7 +299,12 @@ def analizar_bundle(state_file: Path, timeout_s: int = 120) -> dict:
                            "mayusculas_cerca": set(), "rutas": set()}
 
         for src in fuentes[:12]:
-            cuerpo = _fetch(page, src).get("cuerpo", "")
+            # Los bundles viven en m.media-amazon.com: pedirlos desde la página
+            # los bloquea CORS, así que se piden por el contexto del navegador.
+            try:
+                cuerpo = page.context.request.get(src).text()
+            except Exception:
+                cuerpo = ""
             if not cuerpo:
                 continue
             hallazgos["library_type"].update(_LIBRARY_TYPE.findall(cuerpo))
@@ -342,3 +347,53 @@ def _fetch(page, ruta: str) -> dict:
                 return {estado: -1, cuerpo: String(e)};
             }
         }""", ruta)
+
+
+# La cuenta es de un marketplace concreto. El Cuaderno responde en .com, pero
+# la biblioteca del lector puede vivir en el dominio del país.
+DOMINIOS = ("https://read.amazon.com", "https://read.amazon.es",
+            "https://leer.amazon.es", "https://read.amazon.co.uk")
+
+CONSULTA_BUENA = "/kindle-library/search?libraryType={tipo}&querySize=50"
+
+
+def probar_dominios(state_file: Path, tipo: str = "BOOKS",
+                    timeout_s: int = 90) -> list[dict]:
+    """Pregunta por la biblioteca en cada dominio de Amazon."""
+    from .amazon_cloud import NotLoggedIn
+
+    if not state_file.exists():
+        raise NotLoggedIn("No hay sesión guardada. Ejecuta primero: kindle-sync login")
+
+    from playwright.sync_api import sync_playwright
+
+    salida: list[dict] = []
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        try:
+            context = browser.new_context(storage_state=str(state_file))
+            page = context.new_page()
+            page.set_default_timeout(timeout_s * 1000)
+
+            for dominio in DOMINIOS:
+                entrada = {"dominio": dominio}
+                try:
+                    page.goto(f"{dominio}/kindle-library", wait_until="domcontentloaded")
+                    entrada["url_final"] = page.url
+                    respuesta = _fetch(page, CONSULTA_BUENA.format(tipo=tipo))
+                    entrada["estado"] = respuesta.get("estado")
+                    cuerpo = respuesta.get("cuerpo", "")
+                    try:
+                        datos = json.loads(cuerpo)
+                        items = datos.get("itemsList") or []
+                        entrada["elementos"] = len(items)
+                        entrada["titulos"] = [str(i.get("title", ""))[:50] for i in items[:5]]
+                    except json.JSONDecodeError:
+                        entrada["elementos"] = -1
+                        entrada["muestra"] = " ".join(cuerpo[:120].split())
+                except Exception as exc:
+                    entrada["error"] = str(exc)[:120]
+                salida.append(entrada)
+        finally:
+            browser.close()
+    return salida

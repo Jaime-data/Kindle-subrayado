@@ -49,6 +49,8 @@ def main(argv: list[str] | None = None) -> int:
                           help="pregunta a la API del lector por cada tipo de biblioteca")
     p_lector.add_argument("--codigo", action="store_true",
                           help="busca en el JavaScript del lector los tipos válidos")
+    p_lector.add_argument("--dominios", action="store_true",
+                          help="prueba la biblioteca en read.amazon.es y otros dominios")
 
     sub.add_parser("watch", help="vigila en segundo plano y sincroniza solo")
     sub.add_parser("rebuild", help="regenera los .md desde el estado guardado")
@@ -92,6 +94,8 @@ def _dispatch(args) -> int:
         return _libros(args.dump)
 
     if args.cmd == "lector":
+        if args.dominios:
+            return _lector_dominios()
         if args.codigo:
             return _lector_codigo()
         return _lector_api() if args.api else _lector(args.dump)
@@ -148,6 +152,24 @@ def _libros(dump: Path | None) -> int:
           f"{total} subrayado(s) en total.")
     if dump:
         print(f"Volcado guardado en {dump}")
+    return 0
+
+
+def _lector_dominios() -> int:
+    from .sources.web_reader import probar_dominios
+
+    print("Tu cuenta es de amazon.es; probando la biblioteca en cada dominio…\n")
+    for r in probar_dominios(cfg.SESSION_FILE):
+        if "error" in r:
+            print(f"  {r['dominio']:<28} error: {r['error']}")
+            continue
+        n = r.get("elementos", -1)
+        detalle = f"{n} elemento(s)" if n >= 0 else f"no JSON: {r.get('muestra', '')[:60]}"
+        print(f"  {r['dominio']:<28} {r['estado']}  {detalle}")
+        for titulo in r.get("titulos", []):
+            print(f"       · {titulo}")
+        if r.get("url_final", "").rstrip("/") != f"{r['dominio']}/kindle-library".rstrip("/"):
+            print(f"       (redirige a {r['url_final'][:80]})")
     return 0
 
 
