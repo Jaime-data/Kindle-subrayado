@@ -181,3 +181,73 @@ def _elemento(page, selector: str) -> str:
         return (el.inner_text() or el.get_attribute("value") or "")[:1500]
     except Exception:
         return "(no legible)"
+
+
+# La biblioteca del lector se pide por tipo. El HTML inicial trae
+# {"itemsList":[],"libraryType":"BOOKS"}, así que hay más tipos que probar:
+# los documentos personales tienen que estar bajo alguno de estos.
+TIPOS_BIBLIOTECA = ("BOOKS", "DOCS", "PDOC", "PERSONAL_DOCS", "KINDLE_DOCS",
+                    "ALL", "SAMPLES", "AUDIBLE")
+
+CONSULTA = ("/kindle-library/search"
+            "?query=&libraryType={tipo}&paginationToken=&sortType=recency&querySize=50")
+
+
+def explorar_biblioteca(state_file: Path, tipos: tuple[str, ...] = TIPOS_BIBLIOTECA,
+                        timeout_s: int = 90) -> list[dict]:
+    """Pregunta a la API del lector por cada tipo de biblioteca.
+
+    La petición se lanza desde dentro de la página para que viaje con las
+    mismas cookies y cabeceras que usa la aplicación: pedirla por fuera
+    suele acabar en un 403.
+    """
+    from .amazon_cloud import NotLoggedIn
+
+    if not state_file.exists():
+        raise NotLoggedIn("No hay sesión guardada. Ejecuta primero: kindle-sync login")
+
+    from playwright.sync_api import sync_playwright
+
+    resultados: list[dict] = []
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        try:
+            context = browser.new_context(storage_state=str(state_file))
+            page = context.new_page()
+            page.set_default_timeout(timeout_s * 1000)
+            page.goto(BIBLIOTECA_URL, wait_until="domcontentloaded")
+
+            for tipo in tipos:
+                resultados.append(_consultar(page, tipo))
+        finally:
+            browser.close()
+    return resultados
+
+
+def _consultar(page, tipo: str) -> dict:
+    respuesta = page.evaluate(
+        """async (ruta) => {
+            try {
+                const r = await fetch(ruta, {credentials: 'include'});
+                return {estado: r.status, cuerpo: (await r.text()).slice(0, 20000)};
+            } catch (e) {
+                return {estado: -1, cuerpo: String(e)};
+            }
+        }""",
+        CONSULTA.format(tipo=tipo))
+
+    cuerpo = respuesta.get("cuerpo", "")
+    salida = {"tipo": tipo, "estado": respuesta.get("estado"), "elementos": 0,
+              "titulos": [], "asins": []}
+    try:
+        datos = json.loads(cuerpo)
+    except json.JSONDecodeError:
+        salida["error"] = cuerpo[:200]
+        return salida
+
+    items = datos.get("itemsList") or datos.get("items") or []
+    salida["elementos"] = len(items)
+    salida["titulos"] = [str(i.get("title", ""))[:60] for i in items[:5]]
+    salida["asins"] = [str(i.get("asin", "")) for i in items[:5]]
+    salida["claves"] = sorted(items[0].keys())[:20] if items else []
+    return salida

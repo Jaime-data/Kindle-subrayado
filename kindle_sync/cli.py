@@ -45,6 +45,8 @@ def main(argv: list[str] | None = None) -> int:
         "lector", help="sondea el Lector Web de Kindle en busca de tus documentos personales")
     p_lector.add_argument("--dump", metavar="CARPETA", type=Path,
                           help="guarda el HTML y capturas del lector")
+    p_lector.add_argument("--api", action="store_true",
+                          help="pregunta a la API del lector por cada tipo de biblioteca")
 
     sub.add_parser("watch", help="vigila en segundo plano y sincroniza solo")
     sub.add_parser("rebuild", help="regenera los .md desde el estado guardado")
@@ -88,7 +90,7 @@ def _dispatch(args) -> int:
         return _libros(args.dump)
 
     if args.cmd == "lector":
-        return _lector(args.dump)
+        return _lector_api() if args.api else _lector(args.dump)
 
     if args.cmd == "install-agent":
         return _install_agent()
@@ -142,6 +144,31 @@ def _libros(dump: Path | None) -> int:
           f"{total} subrayado(s) en total.")
     if dump:
         print(f"Volcado guardado en {dump}")
+    return 0
+
+
+def _lector_api() -> int:
+    from .sources.web_reader import explorar_biblioteca
+
+    print("Preguntando a la API del lector por cada tipo de biblioteca…\n")
+    hallazgo = False
+    for r in explorar_biblioteca(cfg.SESSION_FILE):
+        estado = r["estado"]
+        if "error" in r:
+            print(f"  {r['tipo']:<14} {estado}  (respuesta no JSON) {r['error'][:60]}")
+            continue
+        print(f"  {r['tipo']:<14} {estado}  {r['elementos']:>3} elemento(s)")
+        for asin, titulo in zip(r["asins"], r["titulos"]):
+            print(f"       · {asin:<16} {titulo}")
+        if r["elementos"] and r["tipo"] != "BOOKS":
+            hallazgo = True
+        if r.get("claves"):
+            print(f"       campos: {', '.join(r['claves'][:12])}")
+
+    if hallazgo:
+        print("\nHay documentos fuera de BOOKS: esta vía sirve.")
+    else:
+        print("\nSolo aparecen libros comprados.")
     return 0
 
 
