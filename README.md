@@ -41,7 +41,20 @@ git clone https://github.com/Jaime-data/Kindle-subrayado.git && cd Kindle-subray
 bash instalar.sh
 ```
 
+Busca los vaults por tu carpeta personal, incluidos los que viven en Google
+Drive o iCloud (`~/Library/CloudStorage`, `~/Library/Mobile Documents`). Si
+prefieres darle la ruta directamente:
+
+```bash
+bash instalar.sh --vault "/Users/tu-usuario/ruta/a/tus/notas"
+```
+
 Se puede volver a ejecutar cuando quieras: no repite lo que ya esté hecho.
+
+Si el vault está en Google Drive o iCloud, ten en cuenta que las notas se
+sincronizan solas entre tus equipos — pero no ejecutes `kindle-sync` en dos
+ordenadores a la vez sobre la misma carpeta, o la nube creará ficheros en
+conflicto.
 
 <details>
 <summary>Instalación manual, paso a paso</summary>

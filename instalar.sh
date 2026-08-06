@@ -22,6 +22,49 @@ preguntar_si() {  # preguntar_si "¿Texto?" -> 0 si sí
     [[ -z "$respuesta" || "$respuesta" =~ ^[SsYy] ]]
 }
 
+buscar_vaults() {
+    # Un vault de Obsidian es una carpeta con un subdirectorio .obsidian.
+    # Se busca en el HOME, saltándose ~/Library salvo CloudStorage y Mobile
+    # Documents, que es justo donde viven los vaults en Google Drive e iCloud
+    # (y que quedan más hondos, de ahí la profundidad extra).
+    {
+        find "$HOME" -maxdepth 5 -type d -name .obsidian \
+             -not -path "$HOME/Library/*" -not -path '*/.Trash/*' 2>/dev/null
+        for nube in "$HOME/Library/CloudStorage" "$HOME/Library/Mobile Documents"; do
+            [[ -d "$nube" ]] && find "$nube" -maxdepth 6 -type d -name .obsidian 2>/dev/null
+        done
+    } | sort -u
+}
+
+escribir_vault() {  # escribir_vault RUTA CONFIG
+    VAULT="$1" python - "$2" <<'PY'
+import os, pathlib, sys
+
+vault = os.environ["VAULT"]
+if '"' in vault or "\\" in vault:
+    sys.exit(f"La ruta tiene caracteres que rompen el TOML: {vault}")
+
+p = pathlib.Path(sys.argv[1])
+texto = p.read_text(encoding="utf-8")
+nuevo = texto.replace('vault = "~/Obsidian/MiVault"', f'vault = "{vault}"')
+if nuevo == texto:
+    sys.exit("No he podido escribir la ruta en la configuración; edítala a mano.")
+p.write_text(nuevo, encoding="utf-8")
+PY
+}
+
+VAULT_ARG=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --vault) VAULT_ARG="${2:-}"; shift 2 ;;
+        -h|--help)
+            echo "Uso: bash instalar.sh [--vault RUTA]"
+            echo "  --vault RUTA   carpeta de notas destino (si no, la busca sola)"
+            exit 0 ;;
+        *) error "Opción desconocida: $1" ;;
+    esac
+done
+
 [[ -t 0 || -e /dev/tty ]] || error "Ejecútalo en una terminal: hace falta responder preguntas."
 
 # --- 1. Python -------------------------------------------------------------
@@ -62,13 +105,17 @@ paso "Configuración"
 CONFIG="${KINDLE_SYNC_CONFIG_DIR:-$HOME/.config/kindle-sync}/config.toml"
 kindle-sync init >/dev/null
 
-if grep -q '~/Obsidian/MiVault' "$CONFIG"; then
+if [[ -n "$VAULT_ARG" ]]; then
+    VAULT="${VAULT_ARG/#\~/$HOME}"
+    [[ -d "$VAULT" ]] || error "No existe la carpeta: $VAULT"
+    escribir_vault "$VAULT" "$CONFIG"
+    ok "Vault: $VAULT"
+elif grep -q '~/Obsidian/MiVault' "$CONFIG"; then
     echo "  Buscando tus vaults de Obsidian…"
     VAULTS=()
     while IFS= read -r hallado; do
         VAULTS+=("$(dirname "$hallado")")
-    done < <(find "$HOME" -maxdepth 5 -type d -name .obsidian \
-                  -not -path '*/Library/*' -not -path '*/.Trash/*' 2>/dev/null)
+    done < <(buscar_vaults)
 
     VAULT=""
     if [[ ${#VAULTS[@]} -eq 1 ]]; then
@@ -88,12 +135,7 @@ if grep -q '~/Obsidian/MiVault' "$CONFIG"; then
         [[ -d "$VAULT" ]] || aviso "No existe esa carpeta."
     done
 
-    VAULT="$VAULT" python - "$CONFIG" <<'PY'
-import os, pathlib, sys
-p = pathlib.Path(sys.argv[1])
-p.write_text(p.read_text(encoding="utf-8").replace(
-    'vault = "~/Obsidian/MiVault"', f'vault = "{os.environ["VAULT"]}"'), encoding="utf-8")
-PY
+    escribir_vault "$VAULT" "$CONFIG"
     ok "Vault: $VAULT"
 else
     ok "Ya estaba configurado ($CONFIG)"
