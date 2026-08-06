@@ -169,3 +169,39 @@ def test_editar_no_toca_la_misma_clave_de_otra_seccion(tmp_path):
     assert conf.correo.activado is True
     assert conf.nube.activado is True   # esta ya estaba a true
     assert conf.usb.activado is True
+
+
+def test_activar_el_correo_en_una_configuracion_antigua(tmp_path):
+    """Una config creada antes de que existiera [correo] debe seguir sirviendo."""
+    path = tmp_path / "config.toml"
+    path.write_text(
+        '[obsidian]\n'
+        '# mi comentario\n'
+        'vault = "~/MisNotas"\n'
+        'subcarpeta = "Kindle"\n'
+        '\n'
+        '[nube]\n'
+        'activado = true\n'
+        'intervalo = 300\n', encoding="utf-8")
+
+    cambios = cfg.set_valores(path, "correo",
+                              {"activado": True, "usuario": "jaime@ejemplo.com"})
+
+    assert len(cambios) == 2
+    conf = cfg.load(path)
+    assert conf.correo.activado is True
+    assert conf.correo.usuario == "jaime@ejemplo.com"
+    assert conf.correo.servidor == "imap.gmail.com"   # el resto, por defecto
+    # No se estropea nada de lo que ya había.
+    assert conf.obsidian.vault == "~/MisNotas"
+    assert conf.nube.intervalo == 300
+    assert "# mi comentario" in path.read_text(encoding="utf-8")
+
+
+def test_editar_la_ultima_seccion_del_fichero(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text('[obsidian]\nvault = "~/N"\n\n[avisos]\nnotificaciones = true\n',
+                    encoding="utf-8")
+
+    cfg.set_valores(path, "avisos", {"notificaciones": False})
+    assert cfg.load(path).avisos.notificaciones is False

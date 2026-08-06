@@ -85,6 +85,9 @@ def main(argv: list[str] | None = None) -> int:
     except RuntimeError as exc:  # incluye NotLoggedIn
         print(f"error: {exc}", file=sys.stderr)
         return 2
+    except (KeyError, OSError) as exc:  # configuración o disco
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     except KeyboardInterrupt:
         return 130
 

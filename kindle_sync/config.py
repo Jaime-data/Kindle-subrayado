@@ -29,8 +29,9 @@ subcarpeta = "Kindle"
 incluir_marcadores = false
 
 [nube]
-# Sincroniza desde read.amazon.com mientras lees (requiere Wi-Fi en el Kindle
-# y que el libro se haya enviado con «Enviar a Kindle», no por USB).
+# Cuaderno de Kindle: sincroniza mientras lees, pero SOLO los libros
+# comprados en Amazon. Los documentos personales no se publican ahí,
+# da igual cómo los hayas metido en el dispositivo.
 activado = true
 # Cada cuánto se consulta la nube, en segundos.
 intervalo = 300
@@ -154,27 +155,26 @@ def set_valores(path: Path, seccion: str, cambios: dict[str, object]) -> list[st
     lineas = path.read_text(encoding="utf-8").splitlines()
     pendientes = dict(cambios)
     aplicados: list[str] = []
-    dentro = False
-    fin_seccion = len(lineas)
 
-    for i, linea in enumerate(lineas):
-        desnuda = linea.strip()
-        if desnuda.startswith("[") and desnuda.endswith("]"):
-            if dentro:
-                fin_seccion = i
-                break
-            dentro = desnuda == f"[{seccion}]"
-            continue
-        if not dentro:
-            continue
+    cabecera = _indice_seccion(lineas, seccion)
+    if cabecera is None:
+        # La configuración es de una versión anterior a esta sección: se añade
+        # al final en vez de fallar. Actualizar el programa no debe obligar a
+        # rehacer el fichero.
+        if lineas and lineas[-1].strip():
+            lineas.append("")
+        lineas.append(f"[{seccion}]")
+        cabecera = len(lineas) - 1
+
+    fin_seccion = _indice_siguiente_seccion(lineas, cabecera)
+
+    for i in range(cabecera + 1, fin_seccion):
+        desnuda = lineas[i].strip()
         clave = desnuda.split("=", 1)[0].strip() if "=" in desnuda else ""
         if clave in pendientes:
             valor = pendientes.pop(clave)
             lineas[i] = f"{clave} = {_toml(valor)}"
             aplicados.append(f"{clave} = {_toml(valor)}")
-
-    if not dentro and not aplicados and f"[{seccion}]" not in "\n".join(lineas):
-        raise KeyError(f"No existe la sección [{seccion}] en {path}")
 
     for clave, valor in pendientes.items():  # claves que faltaban en el fichero
         lineas.insert(fin_seccion, f"{clave} = {_toml(valor)}")
@@ -183,6 +183,21 @@ def set_valores(path: Path, seccion: str, cambios: dict[str, object]) -> list[st
 
     path.write_text("\n".join(lineas) + "\n", encoding="utf-8")
     return aplicados
+
+
+def _indice_seccion(lineas: list[str], seccion: str) -> int | None:
+    for i, linea in enumerate(lineas):
+        if linea.strip() == f"[{seccion}]":
+            return i
+    return None
+
+
+def _indice_siguiente_seccion(lineas: list[str], desde: int) -> int:
+    for i in range(desde + 1, len(lineas)):
+        desnuda = lineas[i].strip()
+        if desnuda.startswith("[") and desnuda.endswith("]"):
+            return i
+    return len(lineas)
 
 
 def _toml(valor: object) -> str:
