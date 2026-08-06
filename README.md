@@ -13,20 +13,27 @@ Kindle, no comprados en Amazon).
 Esto es importante porque determina si conseguirás sincronizar *mientras lees*
 o solo al enchufar el cable. Depende de **cómo metiste el libro en el Kindle**:
 
-| Cómo importaste el libro | Dónde acaban los subrayados | ¿Sincroniza mientras lees? |
+| Origen del libro | Dónde se pueden leer sus subrayados | ¿Mientras lees? |
 |---|---|---|
-| **Enviar a Kindle** (email o app de escritorio) | En la nube de Amazon (`read.amazon.com/notebook`) y en el Kindle | **Sí.** Con el Kindle en Wi-Fi, el subrayado sube en segundos |
-| **Cable USB** (arrastrar a `documents/`) | Solo en `My Clippings.txt`, dentro del Kindle | **No.** Solo al conectar el cable |
+| **Comprado en Amazon** | Cuaderno de Kindle (`read.amazon.com/notebook`) | **Sí.** Con el Kindle en Wi-Fi sube en segundos |
+| **Enviado con «Enviar a Kindle»** | Solo `My Clippings.txt`, dentro del Kindle | **No.** Solo al conectar el cable |
+| **Copiado por cable** a `documents/` | Solo `My Clippings.txt`, dentro del Kindle | **No.** Solo al conectar el cable |
 
-Con USB no hay truco posible: mientras el Kindle está montado en el Mac no
-puedes leer, y mientras lees el Mac no ve su memoria. Nadie puede sortear eso.
+**Amazon no publica en la web las anotaciones de los documentos personales.**
+Comprobado contra una cuenta real: el Cuaderno de Kindle solo lista los libros
+comprados, aunque Whispersync esté activado y aunque el archivado de documentos
+personales lo esté también. Da igual cómo hayas metido el libro — por email o
+por cable —: si no lo compraste en Amazon, sus subrayados no salen del
+dispositivo por su cuenta.
 
-**Si quieres sincronización en vivo, manda tus libros con «Enviar a Kindle»**
-en vez de por cable. Se convierten en documentos personales y sus anotaciones
-viajan a la nube igual que las de un libro comprado.
+Para esos libros la única vía es el cable, y no hay truco posible: mientras el
+Kindle está montado en el Mac no puedes leer, y mientras lees el Mac no ve su
+memoria.
 
 `kindle-sync` lee de las **dos** fuentes y las fusiona: si un subrayado llega
-por los dos caminos, se guarda una sola vez.
+por los dos caminos, se guarda una sola vez. En la práctica: los libros
+comprados llegan solos mientras lees, y los tuyos se recogen enteros cada vez
+que enchufas el Kindle.
 
 ---
 
@@ -241,8 +248,11 @@ solo_documentos_personales = false  # true = ignora los libros comprados
 
 [usb]
 activado = true
-punto_montaje = "/Volumes/Kindle"
+punto_montaje = "auto"              # busca el Kindle por /Volumes
 intervalo = 20                      # cada cuánto mira si has enchufado el cable
+
+[avisos]
+notificaciones = true               # aviso de macOS al llegar subrayados nuevos
 ```
 
 ## Si algo no va
@@ -252,10 +262,11 @@ tail -f ~/.local/state/kindle-sync/kindle-sync.log
 ```
 
 - **«La sesión de Amazon ha caducado»** → `kindle-sync login` otra vez.
-- **La nube no devuelve tu libro importado** → lo metiste por USB. Vuelve a
-  enviarlo con «Enviar a Kindle» o sincroniza por cable.
-- **El Kindle no aparece en `/Volumes/Kindle`** → míralo con `ls /Volumes` y
-  ajusta `punto_montaje` (algunos modelos se montan como `Kindle 1`).
+- **La nube no devuelve tus libros importados** → es lo esperado, Amazon no los
+  publica ahí. Enchufa el Kindle: por cable se recogen todos.
+- **El Kindle no se detecta al enchufarlo** → con `punto_montaje = "auto"` se
+  busca por `/Volumes`. Comprueba con `ls /Volumes` que aparece, y que dentro
+  hay `documents/My Clippings.txt`.
 - **El agente no arranca** → `launchctl list | grep kindle-sync`, y revisa el log.
 
 ## Desarrollo

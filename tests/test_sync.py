@@ -112,3 +112,31 @@ def test_sync_sin_kindle_conectado_no_falla(syncer):
     result = syncer.sync(("clippings",))
     assert result.nuevos == 0
     assert result.errores == []
+
+
+def test_detecta_el_kindle_aunque_se_monte_con_otro_nombre(tmp_path, monkeypatch):
+    """Un segundo Kindle se monta como «Kindle 1», no como «Kindle»."""
+    volumes = tmp_path / "Volumes"
+    (volumes / "Macintosh HD").mkdir(parents=True)
+    docs = volumes / "Kindle 1" / "documents"
+    docs.mkdir(parents=True)
+    (docs / "My Clippings.txt").write_text("", encoding="utf-8")
+    c = cfg.Config()
+    c.usb.punto_montaje = "auto"
+    original = cfg.Path
+    monkeypatch.setattr(cfg, "Path",
+                        lambda p="": original(str(volumes)) if p == "/Volumes" else original(p))
+
+    assert c.clippings_path == docs / "My Clippings.txt"
+
+
+def test_sin_kindle_montado_la_ruta_es_none(tmp_path, monkeypatch):
+    vacio = tmp_path / "Volumes"
+    vacio.mkdir()
+    original = cfg.Path
+    monkeypatch.setattr(cfg, "Path",
+                        lambda p="": original(str(vacio)) if p == "/Volumes" else original(p))
+
+    c = cfg.Config()
+    c.usb.punto_montaje = "auto"
+    assert c.clippings_path is None

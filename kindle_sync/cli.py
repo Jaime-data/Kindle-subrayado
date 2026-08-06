@@ -139,13 +139,16 @@ def _libros(dump: Path | None) -> int:
 
 def _status(conf: cfg.Config) -> int:
     vault = Path(conf.obsidian.vault).expanduser() / conf.obsidian.subcarpeta
-    kindle = Path(conf.usb.punto_montaje)
+    clippings = conf.clippings_path
     notas = len(list(vault.glob("*.md"))) if vault.exists() else 0
 
     print(f"Configuración   : {cfg.CONFIG_FILE}")
     print(f"Carpeta destino : {vault} ({'existe' if vault.exists() else 'aún no creada'})")
     print(f"Notas escritas  : {notas}")
-    print(f"Kindle por USB  : {'conectado' if kindle.exists() else 'no conectado'} ({kindle})")
+    if clippings and clippings.exists():
+        print(f"Kindle por USB  : conectado ({clippings.parent.parent})")
+    else:
+        print("Kindle por USB  : no conectado")
     print(f"Sesión Amazon   : {'guardada' if cfg.SESSION_FILE.exists() else 'no iniciada'}")
     print(f"Nube            : {'activada' if conf.nube.activado else 'desactivada'}"
           f" · cada {conf.nube.intervalo}s")

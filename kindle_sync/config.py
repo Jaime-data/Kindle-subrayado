@@ -39,11 +39,18 @@ solo_documentos_personales = false
 
 [usb]
 # Sincroniza My Clippings.txt cuando el Kindle está conectado por cable.
+# Es la única fuente para los libros que envías con «Enviar a Kindle»:
+# Amazon no publica sus anotaciones en read.amazon.com.
 activado = true
-# Punto de montaje del Kindle en macOS.
-punto_montaje = "/Volumes/Kindle"
+# "auto" busca el Kindle por /Volumes. También puedes fijarlo,
+# por ejemplo "/Volumes/Kindle".
+punto_montaje = "auto"
 # Cada cuánto se comprueba si el Kindle está montado, en segundos.
 intervalo = 20
+
+[avisos]
+# Notificación de macOS cuando llegan subrayados nuevos.
+notificaciones = true
 """
 
 
@@ -64,8 +71,13 @@ class CloudConfig:
 @dataclass
 class UsbConfig:
     activado: bool = True
-    punto_montaje: str = "/Volumes/Kindle"
+    punto_montaje: str = "auto"
     intervalo: int = 20
+
+
+@dataclass
+class AvisosConfig:
+    notificaciones: bool = True
 
 
 @dataclass
@@ -73,10 +85,24 @@ class Config:
     obsidian: ObsidianConfig = field(default_factory=ObsidianConfig)
     nube: CloudConfig = field(default_factory=CloudConfig)
     usb: UsbConfig = field(default_factory=UsbConfig)
+    avisos: AvisosConfig = field(default_factory=AvisosConfig)
 
     @property
-    def clippings_path(self) -> Path:
-        return Path(self.usb.punto_montaje).expanduser() / "documents" / "My Clippings.txt"
+    def clippings_path(self) -> Path | None:
+        """Ruta a My Clippings.txt, o None si el Kindle no está conectado.
+
+        Con `punto_montaje = "auto"` se recorre /Volumes buscando el fichero:
+        los Kindle no siempre se montan como «Kindle» (un segundo dispositivo
+        aparece como «Kindle 1», y algunos modelos usan otro nombre).
+        """
+        if self.usb.punto_montaje != "auto":
+            return Path(self.usb.punto_montaje).expanduser() / "documents" / "My Clippings.txt"
+
+        for volumen in sorted(Path("/Volumes").glob("*")):
+            candidato = volumen / "documents" / "My Clippings.txt"
+            if candidato.exists():
+                return candidato
+        return None
 
 
 def load(path: Path | None = None) -> Config:
@@ -89,6 +115,7 @@ def load(path: Path | None = None) -> Config:
         obsidian=ObsidianConfig(**data.get("obsidian", {})),
         nube=CloudConfig(**data.get("nube", {})),
         usb=UsbConfig(**data.get("usb", {})),
+        avisos=AvisosConfig(**data.get("avisos", {})),
     )
 
 

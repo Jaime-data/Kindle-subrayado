@@ -46,8 +46,8 @@ class Syncer:
 
     def from_clippings(self) -> list[Highlight]:
         path = self.conf.clippings_path
-        if not path.exists():
-            log.debug("Kindle no montado o sin My Clippings.txt en %s", path)
+        if path is None or not path.exists():
+            log.debug("Kindle no conectado (%s)", path or "ningún volumen con My Clippings.txt")
             return []
         found = clippings.parse_file(path)
         log.info("USB: %d entradas leídas de %s", len(found), path)

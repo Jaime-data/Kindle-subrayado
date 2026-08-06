@@ -17,6 +17,7 @@ import time
 from pathlib import Path
 
 from . import config as cfg
+from .notify import notificar
 from .sync import Syncer
 
 log = logging.getLogger("kindle-sync")
@@ -80,11 +81,18 @@ class Watcher:
             return
         if result.nuevos:
             log.info("[%s] %s", etiqueta, result)
+            notificar(
+                f"{result.nuevos} subrayado(s) nuevo(s)",
+                ", ".join(result.libros_tocados),
+                activado=self.conf.avisos.notificaciones,
+            )
         else:
             log.debug("[%s] %s", etiqueta, result)
 
 
-def _stamp(path: Path) -> tuple[int, float] | None:
+def _stamp(path: Path | None) -> tuple[int, float] | None:
+    if path is None:
+        return None
     try:
         st = path.stat()
     except OSError:
