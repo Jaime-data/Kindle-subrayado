@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import re
+from contextlib import contextmanager
 from pathlib import Path
 
 BIBLIOTECA_URL = "https://read.amazon.com/kindle-library"
@@ -251,3 +252,93 @@ def _consultar(page, tipo: str) -> dict:
     salida["asins"] = [str(i.get("asin", "")) for i in items[:5]]
     salida["claves"] = sorted(items[0].keys())[:20] if items else []
     return salida
+
+
+# Variantes de la consulta: un 500 con un tipo válido suele significar que
+# sobra o falta algún parámetro, no que la ruta esté mal.
+VARIANTES = (
+    "/kindle-library/search?query=&libraryType={tipo}&paginationToken=&sortType=recency&querySize=50",
+    "/kindle-library/search?libraryType={tipo}&sortType=recency&querySize=50",
+    "/kindle-library/search?libraryType={tipo}&querySize=50",
+    "/kindle-library/search?libraryType={tipo}",
+    "/kindle-library/search?query=&libraryType={tipo}&sortType=acquisition_desc&querySize=50",
+)
+
+_LIBRARY_TYPE = re.compile(r"""libraryType\s*[:=]\s*["']([A-Za-z_]{3,30})["']""")
+_MAYUSCULAS = re.compile(r"""["']([A-Z][A-Z_]{2,29})["']""")
+_RUTAS = re.compile(r"""["'](/kindle-library/[\w/-]+|/service/web/[\w/-]+)["']""")
+
+
+def probar_variantes(state_file: Path, tipo: str = "BOOKS",
+                     timeout_s: int = 90) -> list[dict]:
+    """Prueba varias formas de la misma consulta para dar con la que responde."""
+    with _pagina(state_file, timeout_s) as page:
+        salida = []
+        for plantilla in VARIANTES:
+            ruta = plantilla.format(tipo=tipo)
+            respuesta = _fetch(page, ruta)
+            salida.append({
+                "ruta": ruta,
+                "estado": respuesta.get("estado"),
+                "json": respuesta.get("cuerpo", "").lstrip().startswith("{"),
+                "muestra": " ".join(respuesta.get("cuerpo", "")[:200].split()),
+            })
+        return salida
+
+
+def analizar_bundle(state_file: Path, timeout_s: int = 120) -> dict:
+    """Busca en el JavaScript del lector los valores válidos de libraryType.
+
+    Adivinar el nombre del tipo es perder el tiempo: la lista exacta está en
+    el propio código de la aplicación.
+    """
+    with _pagina(state_file, timeout_s) as page:
+        fuentes = page.eval_on_selector_all(
+            "script[src]", "els => els.map(e => e.src)")
+        hallazgos: dict = {"bundles": len(fuentes), "library_type": set(),
+                           "mayusculas_cerca": set(), "rutas": set()}
+
+        for src in fuentes[:12]:
+            cuerpo = _fetch(page, src).get("cuerpo", "")
+            if not cuerpo:
+                continue
+            hallazgos["library_type"].update(_LIBRARY_TYPE.findall(cuerpo))
+            hallazgos["rutas"].update(r for r in _RUTAS.findall(cuerpo))
+            for posicion in (m.start() for m in re.finditer("libraryType", cuerpo)):
+                ventana = cuerpo[max(0, posicion - 300):posicion + 300]
+                hallazgos["mayusculas_cerca"].update(_MAYUSCULAS.findall(ventana))
+
+        return {k: sorted(v) if isinstance(v, set) else v for k, v in hallazgos.items()}
+
+
+@contextmanager
+def _pagina(state_file: Path, timeout_s: int):
+    from .amazon_cloud import NotLoggedIn
+
+    if not state_file.exists():
+        raise NotLoggedIn("No hay sesión guardada. Ejecuta primero: kindle-sync login")
+
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        try:
+            context = browser.new_context(storage_state=str(state_file))
+            page = context.new_page()
+            page.set_default_timeout(timeout_s * 1000)
+            page.goto(BIBLIOTECA_URL, wait_until="domcontentloaded")
+            yield page
+        finally:
+            browser.close()
+
+
+def _fetch(page, ruta: str) -> dict:
+    return page.evaluate(
+        """async (ruta) => {
+            try {
+                const r = await fetch(ruta, {credentials: 'include'});
+                return {estado: r.status, cuerpo: (await r.text()).slice(0, 400000)};
+            } catch (e) {
+                return {estado: -1, cuerpo: String(e)};
+            }
+        }""", ruta)

@@ -47,6 +47,8 @@ def main(argv: list[str] | None = None) -> int:
                           help="guarda el HTML y capturas del lector")
     p_lector.add_argument("--api", action="store_true",
                           help="pregunta a la API del lector por cada tipo de biblioteca")
+    p_lector.add_argument("--codigo", action="store_true",
+                          help="busca en el JavaScript del lector los tipos válidos")
 
     sub.add_parser("watch", help="vigila en segundo plano y sincroniza solo")
     sub.add_parser("rebuild", help="regenera los .md desde el estado guardado")
@@ -90,6 +92,8 @@ def _dispatch(args) -> int:
         return _libros(args.dump)
 
     if args.cmd == "lector":
+        if args.codigo:
+            return _lector_codigo()
         return _lector_api() if args.api else _lector(args.dump)
 
     if args.cmd == "install-agent":
@@ -144,6 +148,34 @@ def _libros(dump: Path | None) -> int:
           f"{total} subrayado(s) en total.")
     if dump:
         print(f"Volcado guardado en {dump}")
+    return 0
+
+
+def _lector_codigo() -> int:
+    from .sources.web_reader import analizar_bundle, probar_variantes
+
+    print("Buscando en el código del lector los valores válidos…\n")
+    hallazgos = analizar_bundle(cfg.SESSION_FILE)
+    print(f"Bundles revisados: {hallazgos['bundles']}")
+
+    print("\nValores de libraryType encontrados en el código:")
+    for valor in hallazgos["library_type"] or ["  (ninguno)"]:
+        print(f"  {valor}")
+
+    print("\nConstantes en mayúsculas cerca de «libraryType»:")
+    for valor in hallazgos["mayusculas_cerca"][:40] or ["  (ninguna)"]:
+        print(f"  {valor}")
+
+    print("\nRutas de API que menciona el código:")
+    for ruta in hallazgos["rutas"][:25] or ["  (ninguna)"]:
+        print(f"  {ruta}")
+
+    print("\nVariantes de la consulta con libraryType=BOOKS:")
+    for v in probar_variantes(cfg.SESSION_FILE):
+        marca = "JSON" if v["json"] else "html"
+        print(f"  {v['estado']}  {marca}  {v['ruta'][:95]}")
+        if v["json"]:
+            print(f"        {v['muestra'][:150]}")
     return 0
 
 

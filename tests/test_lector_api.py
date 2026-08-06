@@ -81,3 +81,61 @@ def test_un_tipo_inexistente_no_rompe(monkeypatch, sesion, api):
     (r,) = web_reader.explorar_biblioteca(sesion, tipos=("INVENTADO",))
     assert r["estado"] == 200
     assert r["elementos"] == 0
+
+
+JS_BUNDLE = """
+    var e = {libraryType: "BOOKS"}, t = ["BOOKS", "KINDLE_EBOOK", "PERSONAL_DOC"];
+    function q(libraryType) { return fetch("/kindle-library/search?libraryType=" + libraryType) }
+    var paths = ["/kindle-library/mutate", "/service/web/reader/annotations"];
+"""
+
+
+class _ApiConBundle(_Api):
+    def do_GET(self):
+        if self.path.endswith(".js"):
+            cuerpo = JS_BUNDLE.encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/javascript")
+            self.send_header("Content-Length", str(len(cuerpo)))
+            self.end_headers()
+            self.wfile.write(cuerpo)
+            return
+        if self.path.startswith("/kindle-library") and ".js" not in self.path \
+                and "search" not in self.path:
+            cuerpo = (b"<html><head><meta charset='utf-8'>"
+                      b"<script src='/app.js'></script></head><body>Kindle</body></html>")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(cuerpo)))
+            self.end_headers()
+            self.wfile.write(cuerpo)
+            return
+        super().do_GET()
+
+
+@pytest.fixture(scope="module")
+def api_con_bundle():
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), _ApiConBundle)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{httpd.server_address[1]}"
+    httpd.shutdown()
+
+
+def test_saca_los_tipos_validos_del_javascript(monkeypatch, sesion, api_con_bundle):
+    monkeypatch.setattr(web_reader, "BIBLIOTECA_URL", f"{api_con_bundle}/kindle-library")
+    hallazgos = web_reader.analizar_bundle(sesion)
+
+    assert "BOOKS" in hallazgos["library_type"]
+    # Los valores del enum aparecen cerca, aunque no estén asignados directamente.
+    assert "PERSONAL_DOC" in hallazgos["mayusculas_cerca"]
+    assert "/kindle-library/mutate" in hallazgos["rutas"]
+    assert "/service/web/reader/annotations" in hallazgos["rutas"]
+
+
+def test_prueba_variantes_de_la_consulta(monkeypatch, sesion, api_con_bundle):
+    monkeypatch.setattr(web_reader, "BIBLIOTECA_URL", f"{api_con_bundle}/kindle-library")
+    variantes = web_reader.probar_variantes(sesion, tipo="BOOKS")
+
+    assert len(variantes) == len(web_reader.VARIANTES)
+    assert all(v["estado"] == 200 for v in variantes)
+    assert all(v["json"] for v in variantes)
