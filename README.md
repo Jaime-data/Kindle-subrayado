@@ -13,11 +13,11 @@ Kindle, no comprados en Amazon).
 Esto es importante porque determina si conseguirás sincronizar *mientras lees*
 o solo al enchufar el cable. Depende de **cómo metiste el libro en el Kindle**:
 
-| Origen del libro | Dónde se pueden leer sus subrayados | ¿Mientras lees? |
+| Origen del libro | Cómo se recogen sus subrayados | ¿Mientras lees? |
 |---|---|---|
-| **Comprado en Amazon** | Cuaderno de Kindle (`read.amazon.com/notebook`) | **Sí.** Con el Kindle en Wi-Fi sube en segundos |
-| **Enviado con «Enviar a Kindle»** | Solo `My Clippings.txt`, dentro del Kindle | **No.** Solo al conectar el cable |
-| **Copiado por cable** a `documents/` | Solo `My Clippings.txt`, dentro del Kindle | **No.** Solo al conectar el cable |
+| **Comprado en Amazon** | Solo: del Cuaderno de Kindle, por Wi-Fi | **Sí**, en segundos |
+| **Enviado con «Enviar a Kindle»** | Por cable, o exportando las notas por email | **No** |
+| **Copiado por cable** a `documents/` | Por cable, o exportando las notas por email | **No** |
 
 **Amazon no publica en la web las anotaciones de los documentos personales.**
 Comprobado contra una cuenta real: el Cuaderno de Kindle solo lista los libros
@@ -26,9 +26,19 @@ personales lo esté también. Da igual cómo hayas metido el libro — por email
 por cable —: si no lo compraste en Amazon, sus subrayados no salen del
 dispositivo por su cuenta.
 
-Para esos libros la única vía es el cable, y no hay truco posible: mientras el
-Kindle está montado en el Mac no puedes leer, y mientras lees el Mac no ve su
-memoria.
+Antes de dar esto por bueno se comprobaron todas las vías, una por una:
+
+| Vía | Resultado |
+|---|---|
+| Cuaderno (`/notebook`) | Solo libros comprados. No hay filtro que lo cambie: `#books-filter` es una cabecera, no un desplegable |
+| Lector Web (`read.amazon.com`) | Biblioteca vacía incluso tras registrar el navegador como dispositivo, y también para los libros comprados |
+| API del lector (`/kindle-library/search`) | Responde, pero `itemsList` viene vacía. Los tipos `DOCS`, `PDOC`… devuelven 400: no existen |
+| Dominios de país (`read.amazon.es`) | Redirigen a `/landing`, no atienden la API |
+
+Para esos libros quedan dos caminos, y no hay un tercero. Por **cable** no hay
+truco posible: mientras el Kindle está montado en el Mac no puedes leer, y
+mientras lees el Mac no ve su memoria. Por **email** sí es Wi-Fi puro, a cambio
+de dos toques en el Kindle: dentro del libro, *Notas → Exportar*.
 
 `kindle-sync` lee de las **dos** fuentes y las fusiona: si un subrayado llega
 por los dos caminos, se guarda una sola vez. En la práctica: los libros
@@ -105,6 +115,34 @@ kindle-sync install-agent
 
 A partir de aquí no tienes que hacer nada: subrayas leyendo, y en unos minutos
 aparece en Obsidian.
+
+## Recoger las notas por email (sin cable)
+
+El Kindle sabe enviarse a sí mismo sus notas: dentro de un libro,
+**Notas → Exportar**. Llega un correo con un adjunto que contiene todos los
+subrayados de ese libro, documentos personales incluidos. `kindle-sync` puede
+vaciar ese buzón solo.
+
+Pon tu cuenta en `[correo]` dentro de `~/.config/kindle-sync/config.toml`:
+
+```toml
+[correo]
+activado = true
+servidor = "imap.gmail.com"
+usuario = "tu-cuenta@ejemplo.com"
+```
+
+Guarda la contraseña y comprueba que conecta:
+
+```bash
+kindle-sync correo --configurar --probar
+```
+
+La contraseña **no se escribe en ningún fichero**: va al Llavero de macOS. Con
+Gmail o Google Workspace necesitas una [contraseña de
+aplicación](https://myaccount.google.com/apppasswords), no la tuya habitual.
+
+El buzón se abre en modo solo lectura: no se marca, mueve ni borra nada.
 
 ## Cómo probarlo con tu Kindle
 
@@ -190,6 +228,8 @@ se actualizan a partir de ellos.
 | `kindle-sync sync` | Sincroniza una vez y termina |
 | `kindle-sync sync --dry-run` | Enseña qué haría, sin escribir |
 | `kindle-sync sync --source clippings` | Solo desde el cable USB |
+| `kindle-sync correo --configurar` | Guarda la contraseña del correo en el Llavero |
+| `kindle-sync correo --probar` | Enseña qué exportaciones hay en el buzón |
 | `kindle-sync sync --source cloud` | Solo desde la nube |
 | `kindle-sync libros` | Diagnóstico: qué ve el programa en tu cuenta de Amazon |
 | `kindle-sync libros --dump CARPETA` | Además guarda el HTML y capturas, para depurar |

@@ -31,8 +31,8 @@ def main(argv: list[str] | None = None) -> int:
                          help="sin ventana (solo si ya tienes cookies válidas)")
 
     p_sync = sub.add_parser("sync", help="sincroniza una vez y termina")
-    p_sync.add_argument("--source", choices=["clippings", "cloud", "all"], default="all",
-                        help="de dónde leer (por defecto: ambas)")
+    p_sync.add_argument("--source", choices=["clippings", "correo", "cloud", "all"],
+                        default="all", help="de dónde leer (por defecto: todas)")
     p_sync.add_argument("--dry-run", action="store_true",
                         help="enseña qué haría sin escribir nada")
 
@@ -53,6 +53,13 @@ def main(argv: list[str] | None = None) -> int:
                           help="prueba la biblioteca en read.amazon.es y otros dominios")
     p_lector.add_argument("--registrar", action="store_true",
                           help="registra este navegador como dispositivo Kindle (una vez)")
+
+    p_correo = sub.add_parser(
+        "correo", help="configura y prueba la recogida de notas por email")
+    p_correo.add_argument("--configurar", action="store_true",
+                          help="guarda la contraseña en el Llavero de macOS")
+    p_correo.add_argument("--probar", action="store_true",
+                          help="conecta y enseña qué exportaciones encuentra")
 
     sub.add_parser("watch", help="vigila en segundo plano y sincroniza solo")
     sub.add_parser("rebuild", help="regenera los .md desde el estado guardado")
@@ -116,11 +123,15 @@ def _dispatch(args) -> int:
         return _status(conf)
 
     if args.cmd == "sync":
-        sources = ("clippings", "cloud") if args.source == "all" else (args.source,)
+        sources = (("clippings", "correo", "cloud") if args.source == "all"
+                   else (args.source,))
         syncer = Syncer(conf, dry_run=args.dry_run)
         result = syncer.sync(sources)
         print(result)
         return 1 if result.errores and not result.nuevos else 0
+
+    if args.cmd == "correo":
+        return _correo(conf, args)
 
     if args.cmd == "rebuild":
         n = Syncer(conf).rebuild()
@@ -286,6 +297,52 @@ def _lector(dump: Path | None) -> int:
     return 0
 
 
+def _correo(conf: cfg.Config, args) -> int:
+    import getpass
+
+    from .llavero import SinContrasena, guardar, leer
+    from .sources.buzon import ErrorBuzon, descargar
+
+    c = conf.correo
+    if not c.usuario or "@ejemplo" in c.usuario:
+        print("Pon tu dirección en la sección [correo] de", cfg.CONFIG_FILE)
+        return 2
+
+    if args.configurar:
+        print(f"Cuenta: {c.usuario}  ({c.servidor}:{c.puerto})")
+        print("Con Gmail o Google Workspace necesitas una «contraseña de aplicación»,")
+        print("no la tuya habitual: https://myaccount.google.com/apppasswords")
+        contrasena = getpass.getpass("Contraseña (no se muestra): ")
+        if not contrasena:
+            print("No se ha guardado nada.")
+            return 1
+        guardar(c.usuario, contrasena)
+        print("Guardada en el Llavero de macOS.")
+        if not args.probar:
+            return 0
+
+    try:
+        mensajes = descargar(c.servidor, c.puerto, c.usuario, leer(c.usuario),
+                             carpeta=c.carpeta, dias=c.dias)
+    except (ErrorBuzon, SinContrasena) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    if not mensajes:
+        print(f"Sin exportaciones en los últimos {c.dias} días.")
+        print("En el Kindle, dentro del libro: Notas → Exportar.")
+        return 0
+
+    for m in mensajes:
+        fecha = m.fecha.strftime("%d/%m/%Y") if m.fecha else "sin fecha"
+        libro = m.highlights[0].book_title if m.highlights else "?"
+        print(f"  {fecha}  {len(m.highlights):>4} subrayado(s)  {libro[:50]}")
+    total = sum(len(m.highlights) for m in mensajes)
+    print(f"\n{len(mensajes)} exportación(es), {total} subrayado(s).")
+    print("Actívalo con «activado = true» en [correo] para que entre solo.")
+    return 0
+
+
 def _status(conf: cfg.Config) -> int:
     vault = Path(conf.obsidian.vault).expanduser() / conf.obsidian.subcarpeta
     clippings = conf.clippings_path
@@ -301,6 +358,8 @@ def _status(conf: cfg.Config) -> int:
     print(f"Sesión Amazon   : {'guardada' if cfg.SESSION_FILE.exists() else 'no iniciada'}")
     print(f"Nube            : {'activada' if conf.nube.activado else 'desactivada'}"
           f" · cada {conf.nube.intervalo}s")
+    print(f"Correo          : {'activado' if conf.correo.activado else 'desactivado'}"
+          f" · {conf.correo.usuario or 'sin cuenta'}")
     print(f"Agente launchd  : {'instalado' if PLIST_PATH.exists() else 'no instalado'}")
     print(f"Log             : {cfg.LOG_FILE}")
     return 0

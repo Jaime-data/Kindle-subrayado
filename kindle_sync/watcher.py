@@ -31,6 +31,7 @@ class Watcher:
         self.syncer = Syncer(conf)
         self._stop = False
         self._last_cloud = 0.0
+        self._last_correo = 0.0
         self._last_usb_check = 0.0
         self._clippings_stamp: tuple[int, float] | None = None
 
@@ -41,8 +42,10 @@ class Watcher:
     def run(self) -> None:
         signal.signal(signal.SIGTERM, self.stop)
         signal.signal(signal.SIGINT, self.stop)
-        log.info("Vigilando. USB cada %ss · nube cada %ss",
-                 self.conf.usb.intervalo, self.conf.nube.intervalo)
+        log.info("Vigilando. USB cada %ss · correo cada %ss · nube cada %ss",
+                 self.conf.usb.intervalo,
+                 self.conf.correo.intervalo if self.conf.correo.activado else "—",
+                 self.conf.nube.intervalo)
 
         while not self._stop:
             now = time.monotonic()
@@ -50,6 +53,11 @@ class Watcher:
             if self.conf.usb.activado and now - self._last_usb_check >= self.conf.usb.intervalo:
                 self._last_usb_check = now
                 self._tick_usb()
+
+            if (self.conf.correo.activado
+                    and now - self._last_correo >= self.conf.correo.intervalo):
+                self._last_correo = now
+                self._run("correo", ("correo",))
 
             if self.conf.nube.activado and now - self._last_cloud >= self.conf.nube.intervalo:
                 self._last_cloud = now

@@ -53,6 +53,20 @@ class Syncer:
         log.info("USB: %d entradas leídas de %s", len(found), path)
         return found
 
+    def from_correo(self) -> list[Highlight]:
+        from .llavero import leer
+        from .sources.buzon import descargar
+
+        c = self.conf.correo
+        if not c.usuario:
+            raise RuntimeError("falta el usuario en la sección [correo]")
+
+        mensajes = descargar(c.servidor, c.puerto, c.usuario, leer(c.usuario),
+                             carpeta=c.carpeta, dias=c.dias)
+        found = [hl for m in mensajes for hl in m.highlights]
+        log.info("Correo: %d subrayado(s) en %d exportación(es)", len(found), len(mensajes))
+        return found
+
     def from_cloud(self) -> list[Highlight]:
         from .sources import amazon_cloud
 
@@ -65,7 +79,7 @@ class Syncer:
 
     # --- orquestación ------------------------------------------------------
 
-    def sync(self, sources: tuple[str, ...] = ("clippings", "cloud")) -> SyncResult:
+    def sync(self, sources: tuple[str, ...] = ("clippings", "correo", "cloud")) -> SyncResult:
         result = SyncResult()
         incoming: list[Highlight] = []
 
@@ -75,6 +89,13 @@ class Syncer:
             except OSError as exc:
                 result.errores.append(f"USB: {exc}")
                 log.warning("Fallo leyendo My Clippings.txt: %s", exc)
+
+        if "correo" in sources and self.conf.correo.activado:
+            try:
+                incoming += self.from_correo()
+            except Exception as exc:  # buzón inaccesible, contraseña ausente
+                result.errores.append(f"correo: {exc}")
+                log.warning("Fallo leyendo el correo: %s", exc)
 
         if "cloud" in sources and self.conf.nube.activado:
             try:

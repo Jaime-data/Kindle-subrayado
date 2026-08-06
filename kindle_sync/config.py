@@ -48,6 +48,19 @@ punto_montaje = "auto"
 # Cada cuánto se comprueba si el Kindle está montado, en segundos.
 intervalo = 20
 
+[correo]
+# Recoge los correos de «Notas → Exportar» del Kindle. Es la vía por Wi-Fi
+# para los libros que Amazon no publica en la web.
+activado = false
+servidor = "imap.gmail.com"
+puerto = 993
+usuario = "tu-cuenta@ejemplo.com"
+carpeta = "INBOX"
+# Cuántos días atrás mirar en cada pasada.
+dias = 30
+# Cada cuánto se revisa el buzón, en segundos.
+intervalo = 900
+
 [avisos]
 # Notificación de macOS cuando llegan subrayados nuevos.
 notificaciones = true
@@ -76,6 +89,17 @@ class UsbConfig:
 
 
 @dataclass
+class CorreoConfig:
+    activado: bool = False
+    servidor: str = "imap.gmail.com"
+    puerto: int = 993
+    usuario: str = ""
+    carpeta: str = "INBOX"
+    dias: int = 30
+    intervalo: int = 900
+
+
+@dataclass
 class AvisosConfig:
     notificaciones: bool = True
 
@@ -85,6 +109,7 @@ class Config:
     obsidian: ObsidianConfig = field(default_factory=ObsidianConfig)
     nube: CloudConfig = field(default_factory=CloudConfig)
     usb: UsbConfig = field(default_factory=UsbConfig)
+    correo: CorreoConfig = field(default_factory=CorreoConfig)
     avisos: AvisosConfig = field(default_factory=AvisosConfig)
 
     @property
@@ -115,6 +140,7 @@ def load(path: Path | None = None) -> Config:
         obsidian=ObsidianConfig(**data.get("obsidian", {})),
         nube=CloudConfig(**data.get("nube", {})),
         usb=UsbConfig(**data.get("usb", {})),
+        correo=CorreoConfig(**data.get("correo", {})),
         avisos=AvisosConfig(**data.get("avisos", {})),
     )
 
