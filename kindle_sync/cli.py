@@ -41,6 +41,11 @@ def main(argv: list[str] | None = None) -> int:
     p_libros.add_argument("--dump", metavar="CARPETA", type=Path,
                           help="guarda el HTML y capturas para depurar")
 
+    p_lector = sub.add_parser(
+        "lector", help="sondea el Lector Web de Kindle en busca de tus documentos personales")
+    p_lector.add_argument("--dump", metavar="CARPETA", type=Path,
+                          help="guarda el HTML y capturas del lector")
+
     sub.add_parser("watch", help="vigila en segundo plano y sincroniza solo")
     sub.add_parser("rebuild", help="regenera los .md desde el estado guardado")
     sub.add_parser("status", help="muestra configuración y estado actual")
@@ -81,6 +86,9 @@ def _dispatch(args) -> int:
 
     if args.cmd == "libros":
         return _libros(args.dump)
+
+    if args.cmd == "lector":
+        return _lector(args.dump)
 
     if args.cmd == "install-agent":
         return _install_agent()
@@ -134,6 +142,33 @@ def _libros(dump: Path | None) -> int:
           f"{total} subrayado(s) en total.")
     if dump:
         print(f"Volcado guardado en {dump}")
+    return 0
+
+
+def _lector(dump: Path | None) -> int:
+    from .sources.web_reader import sondear
+
+    informe = sondear(cfg.SESSION_FILE, dump_dir=dump)
+
+    print(f"URL final       : {informe['url_final']}")
+    print(f"Título página   : {informe['titulo_pagina']}")
+    print(f"Sesión válida   : {'sí' if informe['sesion_valida'] else 'NO (pide login)'}")
+    print(f"Habla de «docs» : {'sí' if informe['menciona_documentos'] else 'no'}")
+
+    print("\nElementos encontrados por selector:")
+    for selector, n in informe["candidatos"].items():
+        print(f"  {n:>4}  {selector}")
+
+    print("\nPosibles controles de filtrado:")
+    for selector, n in informe["filtros"].items():
+        print(f"  {n:>4}  {selector}")
+
+    print("\nMuestras de las primeras entradas:")
+    for muestra in informe["muestras"] or ["  (ninguna)"]:
+        print(f"  · {muestra}")
+
+    if dump:
+        print(f"\nVolcado guardado en {dump}")
     return 0
 
 
