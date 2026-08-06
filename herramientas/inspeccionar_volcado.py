@@ -25,7 +25,9 @@ class Resumen(HTMLParser):
         self.controles: list[str] = []
         self.libros: list[tuple[str, str]] = []
         self.contenedores: list[str] = []
+        self.selects: list[str] = []
         self._ruta: list[str] = []
+        self._profundidad = 0
         self._captura: str | None = None
         self._cierra_con: str | None = None
         self._texto: list[str] = []
@@ -43,8 +45,16 @@ class Resumen(HTMLParser):
             self._texto = []
         elif "kp-notebook-library-each-book" in clases:
             self._captura = "libro"
+            self._profundidad = 1   # el libro lleva divs dentro: hay que contarlos
             self._texto = []
             self._ruta.append(ident)
+        elif self._captura == "libro" and tag == "div":
+            self._profundidad += 1
+        elif tag == "select":
+            self.selects.append(_describe(tag, ident, clases))
+            self._captura = "control"
+            self._cierra_con = tag
+            self._texto = []
         elif tag == "div" and ident and any(p in ident.lower() for p in INTERESANTES):
             self.contenedores.append(ident)
 
@@ -54,12 +64,15 @@ class Resumen(HTMLParser):
 
     def handle_endtag(self, tag: str) -> None:
         if self._captura == "control" and tag == self._cierra_con:
-            if self._texto and self.controles:
-                self.controles[-1] += "  → opciones: " + " | ".join(self._texto)[:120]
+            destino = self.selects if self.selects and self._cierra_con == "select" else self.controles
+            if self._texto and destino:
+                destino[-1] += "  → opciones: " + " | ".join(self._texto)[:160]
             self._captura = None
-        elif self._captura == "libro" and tag == "div" and self._ruta:
-            self.libros.append((self._ruta.pop(), " · ".join(self._texto[:2])[:70]))
-            self._captura = None
+        elif self._captura == "libro" and tag == "div":
+            self._profundidad -= 1
+            if self._profundidad == 0 and self._ruta:
+                self.libros.append((self._ruta.pop(), " · ".join(self._texto[:2])[:70]))
+                self._captura = None
 
 
 def _describe(tag: str, ident: str, clases: str) -> str:
@@ -71,12 +84,33 @@ def _describe(tag: str, ident: str, clases: str) -> str:
     return " ".join(partes)
 
 
+def fragmento(html: str, ident: str, largo: int = 3000) -> str:
+    """Devuelve el HTML crudo a partir del elemento con ese id.
+
+    Amazon no usa <select> nativos, así que para ver las opciones de un
+    filtro hay que mirar el trozo de página tal cual.
+    """
+    m = re.search(rf'<[^<>]*id="{re.escape(ident)}"', html)
+    if not m:
+        return f"(no encuentro ningún elemento con id={ident})"
+    trozo = html[m.start():m.start() + largo]
+    trozo = re.sub(r">\s+<", "><", trozo)
+    return re.sub(r"><", ">\n<", trozo)
+
+
 def main(argv: list[str]) -> int:
-    if len(argv) != 2:
+    if len(argv) not in (2, 4) or (len(argv) == 4 and argv[2] != "--fragmento"):
         print(__doc__)
         return 2
 
     path = Path(argv[1]).expanduser()
+    if len(argv) == 4:
+        if not path.exists():
+            print(f"No existe: {path}")
+            return 2
+        print(fragmento(path.read_text(encoding="utf-8", errors="replace"), argv[3]))
+        return 0
+
     if not path.exists():
         print(f"No existe: {path}")
         return 2
@@ -97,6 +131,10 @@ def main(argv: list[str]) -> int:
     print(f"\n-- CONTROLES DE FILTRADO ({len(resumen.controles)}) --")
     for control in resumen.controles or ["  (ninguno)"]:
         print(f"  {control}")
+
+    print(f"\n-- DESPLEGABLES DE LA PÁGINA ({len(resumen.selects)}) --")
+    for sel in resumen.selects or ["  (ninguno)"]:
+        print(f"  {sel}")
 
     print(f"\n-- CONTENEDORES RELEVANTES ({len(resumen.contenedores)}) --")
     for ident in sorted(set(resumen.contenedores)):
