@@ -1,12 +1,17 @@
 <!doctype html>
-<!-- Réplica de read.amazon.com/kindle-library con la estructura que se sondea. -->
-<html lang="es"><head><meta charset="utf-8"><title>Biblioteca de Kindle</title></head>
+<!-- Réplica del lector web: el armazón llega vacío y la app pide los datos
+     después, que es justo lo que despistó al primer sondeo. -->
+<html lang="es"><head><meta charset="utf-8"><title>Kindle</title></head>
 <body>
-<div id="library-filter"><button aria-haspopup="listbox">Todos los elementos</button></div>
-<ul id="cover-art-grid">
-  <li id="title-B07VMW25TP"><span>El Plan de Marketing de 1-Página</span></li>
-  <li id="title-CR!DOC0001"><span>Informe interno de LocalMetric 2025</span></li>
-  <li id="title-CR!DOC0002"><span>Apuntes de producto</span></li>
-</ul>
-<p>Mostrando 3 documentos</p>
+<div id="button-filters"><button aria-haspopup="listbox">Todos los elementos</button></div>
+<div id="web-library-root"><span>Cargando…</span></div>
+<script>
+  setTimeout(async () => {
+    const r = await fetch("lector_datos.json");
+    const datos = await r.json();
+    document.getElementById("web-library-root").innerHTML =
+      '<ul id="cover-art-grid">' + datos.itemsList.map(
+        i => `<li id="title-${i.asin}"><span>${i.title}</span></li>`).join("") + "</ul>";
+  }, 600);
+</script>
 </body></html>

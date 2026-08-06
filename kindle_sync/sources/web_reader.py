@@ -34,9 +34,18 @@ CANDIDATOS_FILTRO = (
 )
 
 
+ASIN_TIENDA = re.compile(r"\bB0[0-9A-Z]{8}\b")
+ASIN_PERSONAL = re.compile(r"CR!\w+|\b\w{6,}_PDOC\b", re.IGNORECASE)
+
+
 def sondear(state_file: Path, dump_dir: Path | None = None,
-            timeout_s: int = 90) -> dict:
-    """Abre la biblioteca del lector web y describe lo que encuentra."""
+            timeout_s: int = 120) -> dict:
+    """Abre la biblioteca del lector web y describe lo que encuentra.
+
+    La biblioteca se pinta en el navegador después de pedir los datos por su
+    cuenta, así que además del HTML se graba el tráfico: la respuesta cruda de
+    Amazon es mucho más fiable que adivinar clases minificadas.
+    """
     from .amazon_cloud import NotLoggedIn
 
     if not state_file.exists():
@@ -45,18 +54,25 @@ def sondear(state_file: Path, dump_dir: Path | None = None,
     from playwright.sync_api import sync_playwright
 
     informe: dict = {"url": BIBLIOTECA_URL}
+    trafico: list[dict] = []
+
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         try:
             context = browser.new_context(storage_state=str(state_file))
             page = context.new_page()
             page.set_default_timeout(timeout_s * 1000)
+            page.on("response", lambda r: _anotar(r, trafico))
+
             page.goto(BIBLIOTECA_URL, wait_until="domcontentloaded")
+            _esperar_biblioteca(page)
             try:
                 page.wait_for_load_state("networkidle", timeout=30_000)
             except Exception:
                 pass  # la app sigue haciendo peticiones: seguimos igualmente
             _hasta_el_final(page)
+            informe["trafico"] = _resumir_trafico(trafico)
+            informe["itemViewResponse"] = _elemento(page, "#itemViewResponse")
 
             informe["url_final"] = page.url
             informe["titulo_pagina"] = page.title()
@@ -74,6 +90,9 @@ def sondear(state_file: Path, dump_dir: Path | None = None,
                 page.screenshot(path=str(dump_dir / "lector-biblioteca.png"), full_page=True)
                 (dump_dir / "lector-informe.json").write_text(
                     json.dumps(informe, indent=2, ensure_ascii=False), encoding="utf-8")
+                (dump_dir / "lector-trafico.json").write_text(
+                    json.dumps(trafico, indent=2, ensure_ascii=False)[:2_000_000],
+                    encoding="utf-8")
         finally:
             browser.close()
     return informe
@@ -109,3 +128,56 @@ def _muestras(page, cuantas: int = 6) -> list[str]:
         if len(elementos) >= 2:
             return [" ".join(e.inner_text().split())[:80] for e in elementos[:cuantas]]
     return []
+
+
+def _anotar(respuesta, destino: list[dict]) -> None:
+    """Guarda cada respuesta que pueda contener la biblioteca."""
+    tipo = (respuesta.headers or {}).get("content-type", "")
+    if "json" not in tipo and "javascript" not in tipo:
+        return
+    entrada = {"url": respuesta.url[:200], "estado": respuesta.status, "tipo": tipo[:40]}
+    try:
+        cuerpo = respuesta.text()
+    except Exception:
+        entrada["cuerpo"] = "(no se pudo leer)"
+        destino.append(entrada)
+        return
+
+    entrada["bytes"] = len(cuerpo)
+    entrada["asin_tienda"] = len(set(ASIN_TIENDA.findall(cuerpo)))
+    entrada["asin_personal"] = sorted(set(ASIN_PERSONAL.findall(cuerpo)))[:5]
+    if '"asin"' in cuerpo.lower() or entrada["asin_tienda"] or entrada["asin_personal"]:
+        entrada["muestra"] = cuerpo[:1500]
+    destino.append(entrada)
+
+
+def _resumir_trafico(trafico: list[dict]) -> list[dict]:
+    """Deja solo las respuestas que parecen traer libros."""
+    interesantes = [t for t in trafico
+                    if t.get("asin_tienda") or t.get("asin_personal") or "muestra" in t]
+    return interesantes[:15]
+
+
+def _esperar_biblioteca(page, timeout_ms: int = 60_000) -> None:
+    """Espera a que la aplicación pinte los libros, no solo el armazón."""
+    try:
+        page.wait_for_function(
+            """() => {
+                const html = document.body.innerHTML;
+                return /B0[0-9A-Z]{8}/.test(html)
+                    || /CR!|_PDOC/i.test(html)
+                    || document.querySelectorAll('#web-library-root *').length > 300;
+            }""",
+            timeout=timeout_ms)
+    except Exception:
+        pass  # puede que la biblioteca esté vacía: seguimos y lo reflejamos
+
+
+def _elemento(page, selector: str) -> str:
+    try:
+        el = page.query_selector(selector)
+        if el is None:
+            return "(no existe)"
+        return (el.inner_text() or el.get_attribute("value") or "")[:1500]
+    except Exception:
+        return "(no legible)"

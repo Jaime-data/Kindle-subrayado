@@ -167,6 +167,18 @@ def _lector(dump: Path | None) -> int:
     for muestra in informe["muestras"] or ["  (ninguna)"]:
         print(f"  · {muestra}")
 
+    print("\nRespuestas de Amazon que traen libros:")
+    for r in informe.get("trafico") or []:
+        personales = ", ".join(r.get("asin_personal") or []) or "ninguno"
+        print(f"  {r['estado']}  {r.get('bytes', 0):>7} B  "
+              f"comprados={r.get('asin_tienda', 0)}  personales={personales}")
+        print(f"        {r['url'][:120]}")
+    if not informe.get("trafico"):
+        print("  (ninguna: la biblioteca no llegó a cargar)")
+
+    vista = (informe.get("itemViewResponse") or "").strip()
+    print(f"\n#itemViewResponse: {vista[:300] if vista else '(vacío)'}")
+
     if dump:
         print(f"\nVolcado guardado en {dump}")
     return 0
