@@ -32,18 +32,24 @@ por los dos caminos, se guarda una sola vez.
 
 ## Instalación
 
-Requiere Python 3.11 o superior.
+Requiere Python 3.11 o superior. El instalador se encarga del resto: entorno
+virtual, dependencias, navegador, busca tu vault de Obsidian, te lleva por el
+login de Amazon y deja la sincronización automática puesta.
 
 ```bash
-git clone <este-repo> kindle-sync && cd kindle-sync
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[nube]"
-python -m playwright install chromium    # solo si vas a usar la nube
+git clone https://github.com/Jaime-data/Kindle-subrayado.git && cd Kindle-subrayado
+bash instalar.sh
 ```
 
-## Puesta en marcha
+Se puede volver a ejecutar cuando quieras: no repite lo que ya esté hecho.
+
+<details>
+<summary>Instalación manual, paso a paso</summary>
 
 ```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[nube]"
+python -m playwright install chromium
 kindle-sync init          # crea ~/.config/kindle-sync/config.toml
 ```
 
@@ -74,6 +80,8 @@ Y ya en automático, para que arranque solo al encender el Mac:
 ```bash
 kindle-sync install-agent
 ```
+
+</details>
 
 A partir de aquí no tienes que hacer nada: subrayas leyendo, y en unos minutos
 aparece en Obsidian.
