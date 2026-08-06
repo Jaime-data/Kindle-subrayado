@@ -18,6 +18,13 @@ from pathlib import Path
 
 BIBLIOTECA_URL = "https://read.amazon.com/kindle-library"
 
+# El Lector Web no se conforma con las cookies: registra el navegador como un
+# dispositivo Kindle (/service/web/register/) y guarda ese registro en el
+# almacenamiento local del navegador, IndexedDB incluido. Un fichero de sesión
+# no captura IndexedDB, así que hace falta un perfil de navegador persistente:
+# sin él la biblioteca responde 200 con la lista vacía.
+PERFIL_DIR = "perfil-lector"
+
 # Selectores candidatos: los que Amazon ha usado en distintas versiones.
 CANDIDATOS_LIBRO = (
     "#cover-art-grid li",
@@ -202,27 +209,8 @@ def explorar_biblioteca(state_file: Path, tipos: tuple[str, ...] = TIPOS_BIBLIOT
     mismas cookies y cabeceras que usa la aplicación: pedirla por fuera
     suele acabar en un 403.
     """
-    from .amazon_cloud import NotLoggedIn
-
-    if not state_file.exists():
-        raise NotLoggedIn("No hay sesión guardada. Ejecuta primero: kindle-sync login")
-
-    from playwright.sync_api import sync_playwright
-
-    resultados: list[dict] = []
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        try:
-            context = browser.new_context(storage_state=str(state_file))
-            page = context.new_page()
-            page.set_default_timeout(timeout_s * 1000)
-            page.goto(BIBLIOTECA_URL, wait_until="domcontentloaded")
-
-            for tipo in tipos:
-                resultados.append(_consultar(page, tipo))
-        finally:
-            browser.close()
-    return resultados
+    with _pagina(state_file, timeout_s) as page:
+        return [_consultar(page, tipo) for tipo in tipos]
 
 
 def _consultar(page, tipo: str) -> dict:
@@ -317,24 +305,67 @@ def analizar_bundle(state_file: Path, timeout_s: int = 120) -> dict:
 
 
 @contextmanager
-def _pagina(state_file: Path, timeout_s: int):
+def _pagina(state_file: Path, timeout_s: int, headless: bool = True):
+    """Abre el lector con el perfil persistente si existe, o con la sesión.
+
+    El perfil es lo que conserva el registro del navegador como dispositivo.
+    """
     from .amazon_cloud import NotLoggedIn
 
-    if not state_file.exists():
+    perfil = perfil_dir(state_file)
+    if not perfil.exists() and not state_file.exists():
         raise NotLoggedIn("No hay sesión guardada. Ejecuta primero: kindle-sync login")
 
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        try:
+        if perfil.exists():
+            context = p.chromium.launch_persistent_context(str(perfil), headless=headless)
+            cerrar = context.close
+            page = context.pages[0] if context.pages else context.new_page()
+        else:
+            browser = p.chromium.launch(headless=headless)
             context = browser.new_context(storage_state=str(state_file))
+            cerrar = browser.close
             page = context.new_page()
+        try:
             page.set_default_timeout(timeout_s * 1000)
             page.goto(BIBLIOTECA_URL, wait_until="domcontentloaded")
             yield page
         finally:
-            browser.close()
+            cerrar()
+
+
+def perfil_dir(state_file: Path) -> Path:
+    return state_file.parent / PERFIL_DIR
+
+
+def registrar(state_file: Path, timeout_s: int = 600) -> bool:
+    """Abre un navegador visible para que el lector registre este navegador.
+
+    Hay que hacerlo una vez: al abrir la biblioteca, la aplicación llama a
+    /service/web/register/ y deja el registro guardado en el perfil.
+    """
+    from playwright.sync_api import sync_playwright
+
+    perfil = perfil_dir(state_file)
+    perfil.mkdir(parents=True, exist_ok=True)
+
+    with sync_playwright() as p:
+        context = p.chromium.launch_persistent_context(str(perfil), headless=False)
+        page = context.pages[0] if context.pages else context.new_page()
+        page.goto(BIBLIOTECA_URL, wait_until="domcontentloaded")
+        print("Inicia sesión si te lo pide y espera a ver tus libros en la biblioteca.")
+        print("Cuando aparezcan, esta ventana se cerrará sola.")
+        try:
+            page.wait_for_function(
+                """() => /B0[0-9A-Z]{8}/.test(document.body.innerHTML)""",
+                timeout=timeout_s * 1000)
+            encontrado = True
+        except Exception:
+            encontrado = False
+        context.close()
+    return encontrado
 
 
 def _fetch(page, ruta: str) -> dict:

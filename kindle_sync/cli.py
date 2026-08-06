@@ -51,6 +51,8 @@ def main(argv: list[str] | None = None) -> int:
                           help="busca en el JavaScript del lector los tipos válidos")
     p_lector.add_argument("--dominios", action="store_true",
                           help="prueba la biblioteca en read.amazon.es y otros dominios")
+    p_lector.add_argument("--registrar", action="store_true",
+                          help="registra este navegador como dispositivo Kindle (una vez)")
 
     sub.add_parser("watch", help="vigila en segundo plano y sincroniza solo")
     sub.add_parser("rebuild", help="regenera los .md desde el estado guardado")
@@ -94,6 +96,8 @@ def _dispatch(args) -> int:
         return _libros(args.dump)
 
     if args.cmd == "lector":
+        if args.registrar:
+            return _lector_registrar()
         if args.dominios:
             return _lector_dominios()
         if args.codigo:
@@ -153,6 +157,23 @@ def _libros(dump: Path | None) -> int:
     if dump:
         print(f"Volcado guardado en {dump}")
     return 0
+
+
+def _lector_registrar() -> int:
+    from .sources.web_reader import perfil_dir, registrar
+
+    print("El Lector Web registra el navegador como un Kindle más, y ese registro")
+    print("no cabe en un fichero de sesión: hace falta un perfil de navegador.\n")
+    ok = registrar(cfg.SESSION_FILE)
+    perfil = perfil_dir(cfg.SESSION_FILE)
+    if ok:
+        print(f"\nRegistrado. Perfil guardado en {perfil}")
+        print("Ahora prueba: kindle-sync lector --api")
+    else:
+        print(f"\nNo llegaron a aparecer libros. El perfil queda en {perfil}")
+        print("Si en el navegador tampoco los veías, el lector no tiene acceso a tu")
+        print("biblioteca y esta vía no sirve.")
+    return 0 if ok else 1
 
 
 def _lector_dominios() -> int:
