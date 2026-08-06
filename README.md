@@ -123,20 +123,15 @@ El Kindle sabe enviarse a sí mismo sus notas: dentro de un libro,
 subrayados de ese libro, documentos personales incluidos. `kindle-sync` puede
 vaciar ese buzón solo.
 
-Pon tu cuenta en `[correo]` dentro de `~/.config/kindle-sync/config.toml`:
-
-```toml
-[correo]
-activado = true
-servidor = "imap.gmail.com"
-usuario = "tu-cuenta@ejemplo.com"
-```
-
-Guarda la contraseña y comprueba que conecta:
+Activa la fuente con tu dirección y guarda la contraseña:
 
 ```bash
+kindle-sync correo --activar tu-cuenta@gmail.com
 kindle-sync correo --configurar --probar
 ```
+
+`--activar` edita la configuración por ti, tocando solo las claves de la
+sección `[correo]` y respetando comentarios y el resto del fichero.
 
 La contraseña **no se escribe en ningún fichero**: va al Llavero de macOS. Con
 Gmail o Google Workspace necesitas una [contraseña de
@@ -228,6 +223,7 @@ se actualizan a partir de ellos.
 | `kindle-sync sync` | Sincroniza una vez y termina |
 | `kindle-sync sync --dry-run` | Enseña qué haría, sin escribir |
 | `kindle-sync sync --source clippings` | Solo desde el cable USB |
+| `kindle-sync correo --activar CORREO` | Activa la fuente y escribe tu dirección en la configuración |
 | `kindle-sync correo --configurar` | Guarda la contraseña del correo en el Llavero |
 | `kindle-sync correo --probar` | Enseña qué exportaciones hay en el buzón |
 | `kindle-sync sync --source cloud` | Solo desde la nube |

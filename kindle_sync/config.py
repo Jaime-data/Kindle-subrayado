@@ -145,6 +145,55 @@ def load(path: Path | None = None) -> Config:
     )
 
 
+def set_valores(path: Path, seccion: str, cambios: dict[str, object]) -> list[str]:
+    """Cambia claves de una sección del TOML conservando comentarios y formato.
+
+    Editar el fichero a mano es fácil de equivocar; esto toca solo las claves
+    indicadas y solo dentro de su sección.
+    """
+    lineas = path.read_text(encoding="utf-8").splitlines()
+    pendientes = dict(cambios)
+    aplicados: list[str] = []
+    dentro = False
+    fin_seccion = len(lineas)
+
+    for i, linea in enumerate(lineas):
+        desnuda = linea.strip()
+        if desnuda.startswith("[") and desnuda.endswith("]"):
+            if dentro:
+                fin_seccion = i
+                break
+            dentro = desnuda == f"[{seccion}]"
+            continue
+        if not dentro:
+            continue
+        clave = desnuda.split("=", 1)[0].strip() if "=" in desnuda else ""
+        if clave in pendientes:
+            valor = pendientes.pop(clave)
+            lineas[i] = f"{clave} = {_toml(valor)}"
+            aplicados.append(f"{clave} = {_toml(valor)}")
+
+    if not dentro and not aplicados and f"[{seccion}]" not in "\n".join(lineas):
+        raise KeyError(f"No existe la sección [{seccion}] en {path}")
+
+    for clave, valor in pendientes.items():  # claves que faltaban en el fichero
+        lineas.insert(fin_seccion, f"{clave} = {_toml(valor)}")
+        aplicados.append(f"{clave} = {_toml(valor)}")
+        fin_seccion += 1
+
+    path.write_text("\n".join(lineas) + "\n", encoding="utf-8")
+    return aplicados
+
+
+def _toml(valor: object) -> str:
+    if isinstance(valor, bool):
+        return "true" if valor else "false"
+    if isinstance(valor, (int, float)):
+        return str(valor)
+    texto = str(valor).replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{texto}"'
+
+
 def write_default(path: Path | None = None, force: bool = False) -> Path:
     path = path or CONFIG_FILE
     path.parent.mkdir(parents=True, exist_ok=True)

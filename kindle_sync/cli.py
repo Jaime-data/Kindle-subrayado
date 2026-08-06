@@ -56,6 +56,8 @@ def main(argv: list[str] | None = None) -> int:
 
     p_correo = sub.add_parser(
         "correo", help="configura y prueba la recogida de notas por email")
+    p_correo.add_argument("--activar", metavar="CORREO",
+                          help="activa la fuente y escribe tu dirección en la configuración")
     p_correo.add_argument("--configurar", action="store_true",
                           help="guarda la contraseña en el Llavero de macOS")
     p_correo.add_argument("--probar", action="store_true",
@@ -302,6 +304,17 @@ def _correo(conf: cfg.Config, args) -> int:
 
     from .llavero import SinContrasena, guardar, leer
     from .sources.buzon import ErrorBuzon, descargar
+
+    if args.activar:
+        cambios = cfg.set_valores(cfg.CONFIG_FILE, "correo",
+                                  {"activado": True, "usuario": args.activar})
+        print(f"Escrito en {cfg.CONFIG_FILE} [correo]:")
+        for linea in cambios:
+            print(f"  {linea}")
+        conf = cfg.load()
+        if not (args.configurar or args.probar):
+            print("\nAhora guarda la contraseña: kindle-sync correo --configurar --probar")
+            return 0
 
     c = conf.correo
     if not c.usuario or "@ejemplo" in c.usuario:

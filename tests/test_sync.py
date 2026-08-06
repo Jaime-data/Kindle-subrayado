@@ -140,3 +140,32 @@ def test_sin_kindle_montado_la_ruta_es_none(tmp_path, monkeypatch):
     c = cfg.Config()
     c.usb.punto_montaje = "auto"
     assert c.clippings_path is None
+
+
+def test_editar_la_configuracion_respeta_comentarios(tmp_path):
+    path = tmp_path / "config.toml"
+    cfg.write_default(path)
+    antes = path.read_text(encoding="utf-8")
+
+    cambios = cfg.set_valores(path, "correo",
+                              {"activado": True, "usuario": "jaime@ejemplo.com"})
+
+    assert 'usuario = "jaime@ejemplo.com"' in cambios
+    texto = path.read_text(encoding="utf-8")
+    assert 'usuario = "jaime@ejemplo.com"' in texto
+    assert "activado = true" in texto.split("[correo]")[1].split("[avisos]")[0]
+    # Los comentarios y el resto de secciones quedan intactos.
+    assert "# Notificación de macOS" in texto
+    assert texto.count("[obsidian]") == antes.count("[obsidian]")
+    assert cfg.load(path).correo.usuario == "jaime@ejemplo.com"
+
+
+def test_editar_no_toca_la_misma_clave_de_otra_seccion(tmp_path):
+    path = tmp_path / "config.toml"
+    cfg.write_default(path)
+    cfg.set_valores(path, "correo", {"activado": True})
+
+    conf = cfg.load(path)
+    assert conf.correo.activado is True
+    assert conf.nube.activado is True   # esta ya estaba a true
+    assert conf.usb.activado is True
