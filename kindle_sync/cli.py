@@ -18,11 +18,17 @@ PLIST_PATH = Path.home() / "Library" / "LaunchAgents" / f"{AGENT_LABEL}.plist"
 
 
 def main(argv: list[str] | None = None) -> int:
+    # -v se acepta antes y después del subcomando: obligar a una posición
+    # concreta es una trampa para quien lo usa.
+    comun = argparse.ArgumentParser(add_help=False)
+    comun.add_argument("-v", "--verbose", action="store_true",
+                       default=argparse.SUPPRESS, help="más detalle en el log")
+
     parser = argparse.ArgumentParser(
-        prog="kindle-sync",
+        prog="kindle-sync", parents=[comun],
         description="Sube los subrayados del Kindle a tus notas de Obsidian.")
-    parser.add_argument("-v", "--verbose", action="store_true", help="más detalle en el log")
-    sub = parser.add_subparsers(dest="cmd", required=True)
+    sub = parser.add_subparsers(dest="cmd", required=True, parser_class=lambda **kw:
+                                argparse.ArgumentParser(parents=[comun], **kw))
 
     sub.add_parser("init", help="crea el fichero de configuración")
 
@@ -75,7 +81,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("uninstall-agent", help="desinstala el arranque automático")
 
     args = parser.parse_args(argv)
-    _setup_logging(args.verbose)
+    _setup_logging(getattr(args, "verbose", False))
 
     try:
         return _dispatch(args)
@@ -410,7 +416,9 @@ def _status(conf: cfg.Config) -> int:
     if clippings and clippings.exists():
         print(f"Kindle por USB  : conectado ({clippings.parent.parent})")
     else:
-        print("Kindle por USB  : no conectado")
+        print(f"Kindle por USB  : no conectado (buscando en {conf.usb.punto_montaje})")
+        for pista in _pistas_volumenes(conf):
+            print(f"                  {pista}")
     print(f"Sesión Amazon   : {'guardada' if cfg.SESSION_FILE.exists() else 'no iniciada'}")
     print(f"Nube            : {'activada' if conf.nube.activado else 'desactivada'}"
           f" · cada {conf.nube.intervalo}s")
@@ -419,6 +427,22 @@ def _status(conf: cfg.Config) -> int:
     print(f"Agente launchd  : {'instalado' if PLIST_PATH.exists() else 'no instalado'}")
     print(f"Log             : {cfg.LOG_FILE}")
     return 0
+
+
+def _pistas_volumenes(conf: cfg.Config) -> list[str]:
+    """Explica por qué no se ve el Kindle, mirando qué hay montado."""
+    volumenes = [v for v in sorted(Path("/Volumes").glob("*")) if v.is_dir()]
+    if not volumenes:
+        return ["no hay ningún volumen montado: ¿está el cable conectado?"]
+
+    con_clippings = [v for v in volumenes
+                     if (v / "documents" / "My Clippings.txt").exists()]
+    if con_clippings and conf.usb.punto_montaje != "auto":
+        return [f"pero «{v.name}» sí tiene subrayados. Arréglalo con:" for v in con_clippings[:1]] \
+            + ["  kindle-sync config --set usb.punto_montaje=auto"]
+
+    return ["volúmenes montados: " + ", ".join(v.name for v in volumenes[:6]),
+            "ninguno tiene documents/My Clippings.txt"]
 
 
 def _install_agent() -> int:
