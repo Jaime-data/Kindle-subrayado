@@ -67,7 +67,7 @@ def test_el_indice_agrupa_por_tema(syncer):
     assert "libros: 8" in indice
     assert "```mermaid" in indice and "mindmap" in indice
     for _, _, tema in BIBLIOTECA:
-        assert f"## {tema}" in indice
+        assert f"|{tema}]]" in indice          # cada tema enlaza a su nota
     # Enlaces que Obsidian resuelve a la nota del libro.
     assert "[[Radical Candor - Kim Scott|Radical Candor]]" in indice
 
@@ -89,7 +89,7 @@ def test_la_configuracion_manda_sobre_la_clasificacion(tmp_path):
     syncer.ingest(list(_highlights()))
     indice = syncer.indice.path.read_text(encoding="utf-8")
 
-    assert "## Mis imprescindibles" in indice
+    assert "|Mis imprescindibles]]" in indice
     assert "[[Radical Candor - Kim Scott|Radical Candor]]" in indice
 
 
@@ -117,3 +117,58 @@ def test_lo_escrito_bajo_el_marcador_del_indice_se_conserva(syncer):
 
     syncer.ingest([Highlight(book_title="Otro libro", text="Idea.", location="1")])
     assert "Algo." in ruta.read_text(encoding="utf-8")
+
+
+def test_cada_tema_tiene_su_propia_nota(syncer):
+    syncer.ingest(list(_highlights()))
+
+    for _, _, tema in BIBLIOTECA:
+        nota = syncer.temas.path_for(tema)
+        assert nota.exists(), f"falta la nota del tema {tema}"
+        texto = nota.read_text(encoding="utf-8")
+        assert f"# {tema}" in texto
+        assert "```mermaid" in texto
+        assert "[[Índice|volver al índice]]" in texto
+
+    liderazgo = syncer.temas.path_for("Liderazgo y equipos").read_text(encoding="utf-8")
+    assert "[[Radical Candor - Kim Scott|Radical Candor]]" in liderazgo
+    assert "1984" not in liderazgo
+
+
+def test_el_indice_enlaza_con_las_notas_de_tema(syncer):
+    syncer.ingest(list(_highlights()))
+    indice = syncer.indice.path.read_text(encoding="utf-8")
+
+    assert "[[Temas/Negocios|Negocios]]" in indice
+
+
+def test_las_ideas_de_fondo_salen_en_la_nota_del_tema(syncer):
+    largo = ("La confianza se construye diciendo lo que piensas cuando cuesta, "
+             "y no cuando es cómodo; el equipo lo nota antes que tú.")
+    syncer.ingest([Highlight(book_title="Radical Candor", book_author="Kim Scott",
+                             text=largo, location="10"),
+                   Highlight(book_title="Radical Candor", book_author="Kim Scott",
+                             text="Corto.", location="20")])
+
+    nota = syncer.temas.path_for("Liderazgo y equipos").read_text(encoding="utf-8")
+    assert "## Ideas de fondo" in nota
+    assert largo in nota
+    assert "> Corto." not in nota      # los subrayados sueltos no son ideas
+
+
+def test_un_tema_que_se_queda_vacio_desaparece(syncer, tmp_path):
+    syncer.ingest([Highlight(book_title="1984", book_author="George Orwell",
+                             text="La guerra es la paz.", location="1")])
+    ficcion = syncer.temas.path_for("Ficción y literatura")
+    assert ficcion.exists()
+
+    # El usuario reclasifica el libro a mano.
+    syncer.conf.categorias = {"1984": "Mis imprescindibles"}
+    for key in syncer.store.keys():
+        libro = syncer.store.load(key)
+        syncer.clasificar_libro(libro)
+        syncer.store.save(key, libro)
+    syncer.escribir_indice()
+
+    assert not ficcion.exists(), "el tema vacío debe desaparecer"
+    assert syncer.temas.path_for("Mis imprescindibles").exists()

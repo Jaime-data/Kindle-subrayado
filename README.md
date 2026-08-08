@@ -296,11 +296,29 @@ Obsidian dibuja ese bloque como un diagrama de verdad. Debajo van las
 secciones por tema con enlaces `[[...]]` a cada libro, así que el grafo de
 Obsidian también los conecta.
 
-El índice se regenera solo en cada sincronización. A mano:
+Además del índice, **cada temática tiene su propia nota** en `Kindle/Temas/`,
+con sus libros, su mapa mental y las «ideas de fondo» — los subrayados más
+desarrollados de ese tema. Así cada temática existe como nota enlazable desde
+cualquier sitio de tu vault, y no solo como un apartado del índice.
+
+```
+Kindle/
+├── Índice.md                    ← vista de pájaro, enlaza a cada tema
+├── Temas/
+│   ├── Negocios.md              ← sus libros, su mapa, sus ideas de fondo
+│   ├── Marketing y ventas.md
+│   └── Liderazgo y equipos.md
+└── Traction - Gino Wickman.md   ← una nota por libro
+```
+
+Todo se regenera solo en cada sincronización. A mano:
 
 ```bash
 kindle-sync indice
 ```
+
+Si reclasificas un libro y un tema se queda sin ninguno, su nota se borra
+sola — pero solo si no la has editado por debajo del marcador final.
 
 La clasificación es automática y a veces se equivoca — un título opaco como
 «The Hard Thing About Hard Things» no dice de qué va. Se corrige en la

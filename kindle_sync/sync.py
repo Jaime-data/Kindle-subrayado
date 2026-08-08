@@ -10,6 +10,7 @@ from . import config as cfg
 from .models import Book, Highlight, group_by_book, limpiar_titulo, slugify
 from .categorias import clasificar
 from .sinks.indice import IndiceSink
+from .sinks.temas import TemasSink
 from .sinks.obsidian import ObsidianSink
 from .sources import clippings
 from .state import Store
@@ -44,6 +45,7 @@ class Syncer:
             include_bookmarks=conf.obsidian.incluir_marcadores,
         )
         self.indice = IndiceSink(conf.obsidian.vault, conf.obsidian.subcarpeta)
+        self.temas = TemasSink(conf.obsidian.vault, conf.obsidian.subcarpeta)
 
     # --- fuentes -----------------------------------------------------------
 
@@ -163,10 +165,16 @@ class Syncer:
         return [b for key in self.store.keys() if (b := self.store.load(key))]
 
     def escribir_indice(self) -> Path:
+        """Regenera el índice y una nota por cada temática."""
+        from .sinks.indice import _agrupar
+
         libros = self.libros()
         for libro in libros:  # por si alguno viene de antes de las categorías
             if not libro.categoria:
                 self.clasificar_libro(libro)
+
+        por_tema = _agrupar(libros)
+        self.temas.write_all(por_tema, self.sink.nombre_nota)
         return self.indice.write(libros, self.sink.nombre_nota)
 
     def limpiar_titulos(self, dry_run: bool = False) -> list[tuple[str, str]]:

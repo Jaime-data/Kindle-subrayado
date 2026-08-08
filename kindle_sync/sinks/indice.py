@@ -14,6 +14,7 @@ from pathlib import Path
 
 from ..categorias import SIN_CLASIFICAR
 from ..models import Book
+from .temas import CARPETA as CARPETA_TEMAS
 
 NOMBRE = "Índice"
 END_MARKER = "<!-- kindle-sync:fin -->"
@@ -68,7 +69,7 @@ class IndiceSink:
 
         for tema, del_tema in por_tema.items():
             subrayados = sum(len(l.highlights) for l in del_tema)
-            lineas += [f"## {tema}",
+            lineas += [f"## [[{CARPETA_TEMAS}/{_sin_barras(tema)}|{tema}]]",
                        "",
                        f"*{len(del_tema)} libro(s) · {subrayados} subrayado(s)*",
                        ""]
@@ -95,6 +96,10 @@ def _agrupar(libros: list[Book]) -> dict[str, list[Book]]:
     return dict(sorted(
         por_tema.items(),
         key=lambda par: (par[0] == SIN_CLASIFICAR, -len(par[1]), par[0])))
+
+
+def _sin_barras(tema: str) -> str:
+    return re.sub(r'[\\/:*?"<>|]', "-", tema).strip() or SIN_CLASIFICAR
 
 
 def _rama(texto: str) -> str:
