@@ -68,8 +68,11 @@ def test_el_indice_agrupa_por_tema(syncer):
     assert "```mermaid" in indice and "mindmap" in indice
     for _, _, tema in BIBLIOTECA:
         assert f"|{tema}]]" in indice          # cada tema enlaza a su nota
-    # Enlaces que Obsidian resuelve a la nota del libro.
-    assert "[[Radical Candor - Kim Scott|Radical Candor]]" in indice
+
+    # El índice NO enlaza a los libros: la jerarquía es Índice -> Tema -> Libro,
+    # y enlazar aquí también aplanaría el grafo de Obsidian.
+    assert "[[Radical Candor - Kim Scott" not in indice
+    assert "Radical Candor" in indice          # sí aparece, como texto
 
 
 def test_la_categoria_llega_al_frontmatter_y_a_las_etiquetas(syncer):
@@ -90,7 +93,7 @@ def test_la_configuracion_manda_sobre_la_clasificacion(tmp_path):
     indice = syncer.indice.path.read_text(encoding="utf-8")
 
     assert "|Mis imprescindibles]]" in indice
-    assert "[[Radical Candor - Kim Scott|Radical Candor]]" in indice
+    assert "Radical Candor" in indice
 
 
 def test_el_mapa_mental_no_rompe_mermaid(syncer):
@@ -106,7 +109,10 @@ def test_el_mapa_mental_no_rompe_mermaid(syncer):
     assert ramas
     for rama in ramas:  # el root sí lleva paréntesis: es sintaxis de mermaid
         assert not set("()[]{}\"'") & set(rama), rama
-    assert any("Centrate" in r or "Céntrate" in r for r in ramas)
+    # El mapa del índice lista temas, no libros: el del tema lista sus libros.
+    assert any("Productividad" in r for r in ramas)
+    tema = syncer.temas.path_for("Productividad").read_text(encoding="utf-8")
+    assert "Céntrate" in tema
 
 
 def test_lo_escrito_bajo_el_marcador_del_indice_se_conserva(syncer):
@@ -172,3 +178,21 @@ def test_un_tema_que_se_queda_vacio_desaparece(syncer, tmp_path):
 
     assert not ficcion.exists(), "el tema vacío debe desaparecer"
     assert syncer.temas.path_for("Mis imprescindibles").exists()
+
+
+def test_la_jerarquia_es_indice_tema_libro(syncer):
+    """El grafo debe encadenarse, no abrirse en abanico desde el índice."""
+    syncer.ingest(list(_highlights()))
+
+    indice = syncer.indice.path.read_text(encoding="utf-8")
+    tema = syncer.temas.path_for("Liderazgo y equipos").read_text(encoding="utf-8")
+    libro = (syncer.sink.root / "Radical Candor - Kim Scott.md").read_text(encoding="utf-8")
+
+    # Índice -> Tema
+    assert "[[Temas/Liderazgo y equipos|Liderazgo y equipos]]" in indice
+    # Tema -> Libro
+    assert "[[Radical Candor - Kim Scott|Radical Candor]]" in tema
+    # Libro -> Tema (vuelta atrás)
+    assert "Tema: [[Temas/Liderazgo y equipos|Liderazgo y equipos]]" in libro
+    # Y ningún atajo del índice al libro
+    assert "[[Radical Candor - Kim Scott" not in indice

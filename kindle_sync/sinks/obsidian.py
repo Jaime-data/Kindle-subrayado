@@ -13,6 +13,8 @@ from datetime import datetime
 from pathlib import Path
 
 from ..models import Book, Highlight
+from .temas import CARPETA as CARPETA_TEMAS
+from .temas import nombre_archivo as _sin_barras
 
 END_MARKER = "<!-- kindle-sync:fin -->"
 _HASH_RE = re.compile(r"\^k-([0-9a-f]{12})")
@@ -71,6 +73,11 @@ class ObsidianSink:
         ]
         if book.author:
             lines += [f"*{book.author}*", ""]
+        if book.categoria:
+            # Enlace hacia arriba: el libro pertenece a su tema, y el tema al
+            # índice. Así el grafo de Obsidian dibuja la jerarquía completa.
+            lines += [f"Tema: [[{CARPETA_TEMAS}/{_sin_barras(book.categoria)}"
+                      f"|{book.categoria}]]", ""]
         if book.descripcion:
             lines += [f"> {book.descripcion}", ""]
 

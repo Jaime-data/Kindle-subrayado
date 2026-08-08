@@ -19,6 +19,7 @@ from .temas import CARPETA as CARPETA_TEMAS
 NOMBRE = "Índice"
 END_MARKER = "<!-- kindle-sync:fin -->"
 _MAX_RAMA = 32  # títulos largos rompen la legibilidad del diagrama
+_LIBROS_LISTADOS = 4  # de muestra en cada tema; la lista entera vive en su nota
 
 
 class IndiceSink:
@@ -62,23 +63,25 @@ class IndiceSink:
         ]
 
         for tema, del_tema in por_tema.items():
-            lineas.append(f"    {_rama(tema)}")
-            for libro in del_tema:
-                lineas.append(f"      {_rama(libro.title)}")
+            lineas.append(f"    {_rama(tema)} {len(del_tema)}")
         lineas += ["```", ""]
 
+        lineas += ["## Temas", ""]
         for tema, del_tema in por_tema.items():
             subrayados = sum(len(l.highlights) for l in del_tema)
-            lineas += [f"## [[{CARPETA_TEMAS}/{_sin_barras(tema)}|{tema}]]",
-                       "",
-                       f"*{len(del_tema)} libro(s) · {subrayados} subrayado(s)*",
-                       ""]
-            for libro in del_tema:
-                autor = f" — {libro.author}" if libro.author else ""
-                lineas.append(
-                    f"- [[{nombre_nota(libro)}|{libro.title}]]{autor} "
-                    f"· {len(libro.highlights)} subrayado(s)")
-            lineas.append("")
+            lineas += [
+                f"### [[{CARPETA_TEMAS}/{_sin_barras(tema)}|{tema}]]",
+                "",
+                f"*{len(del_tema)} libro(s) · {subrayados} subrayado(s)*",
+                "",
+            ]
+            # Los títulos van sin enlazar: el índice conecta con los temas y
+            # cada tema con sus libros. Enlazar aquí también aplanaría el grafo.
+            titulos = ", ".join(l.title for l in del_tema[:_LIBROS_LISTADOS])
+            resto = len(del_tema) - _LIBROS_LISTADOS
+            if resto > 0:
+                titulos += f", y {resto} más"
+            lineas += [titulos, ""]
 
         lineas += [END_MARKER, ""]
         return "\n".join(lineas)

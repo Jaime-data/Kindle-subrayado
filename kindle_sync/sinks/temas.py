@@ -133,8 +133,12 @@ def _rama(texto: str) -> str:
     return limpio or "sin título"
 
 
-def _sin_barras(tema: str) -> str:
+def nombre_archivo(tema: str) -> str:
+    """Nombre de fichero seguro para un tema, y por tanto su destino de enlace."""
     return re.sub(r'[\\/:*?"<>|]', "-", tema).strip() or SIN_CLASIFICAR
+
+
+_sin_barras = nombre_archivo
 
 
 def _yaml(valor: str) -> str:

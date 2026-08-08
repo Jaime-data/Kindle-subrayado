@@ -303,8 +303,20 @@ Obsidian también los conecta.
 
 Además del índice, **cada temática tiene su propia nota** en `Kindle/Temas/`,
 con sus libros, su mapa mental y las «ideas de fondo» — los subrayados más
-desarrollados de ese tema. Así cada temática existe como nota enlazable desde
-cualquier sitio de tu vault, y no solo como un apartado del índice.
+desarrollados de ese tema.
+
+La estructura es una cadena, no un abanico:
+
+```
+Índice  →  Tema  →  Libro
+                 ←
+```
+
+El índice enlaza **solo** con los temas; cada tema enlaza con sus libros; y
+cada libro enlaza de vuelta con su tema. Por eso los títulos aparecen en el
+índice como texto sin enlazar: si el índice enlazara también a cada libro, el
+grafo de Obsidian saldría plano —el índice conectado a los veinte libros a la
+vez— en vez de dibujar la jerarquía.
 
 ```
 Kindle/
