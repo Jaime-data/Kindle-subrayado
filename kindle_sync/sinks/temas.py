@@ -77,6 +77,8 @@ class TemasSink:
             autor = f" — {libro.author}" if libro.author else ""
             lineas.append(f"- [[{nombre_libro(libro)}|{libro.title}]]{autor} "
                           f"· {len(libro.highlights)} subrayado(s)")
+            if libro.descripcion:
+                lineas.append(f"  {libro.descripcion}")
 
         destacados = _destacados(libros)
         if destacados:

@@ -231,6 +231,8 @@ se actualizan a partir de ellos.
 | `kindle-sync libros --dump CARPETA` | Además guarda el HTML y capturas, para depurar |
 | `kindle-sync watch` | Vigila en primer plano (útil para depurar) |
 | `kindle-sync status` | Estado: destino, Kindle conectado, sesión, agente |
+| `kindle-sync clasificar` | Clasifica por temática con Claude, leyendo los subrayados |
+| `kindle-sync clasificar --rehacer` | Reclasifica también los que ya tienen tema |
 | `kindle-sync indice` | Regenera la nota índice con el mapa mental por temas |
 | `kindle-sync limpiar` | Enseña qué títulos tienen ruido de webs de descarga |
 | `kindle-sync limpiar --aplicar` | Los renombra, fusionando duplicados y borrando notas viejas |
@@ -320,9 +322,34 @@ kindle-sync indice
 Si reclasificas un libro y un tema se queda sin ninguno, su nota se borra
 sola — pero solo si no la has editado por debajo del marcador final.
 
-La clasificación es automática y a veces se equivoca — un título opaco como
-«The Hard Thing About Hard Things» no dice de qué va. Se corrige en la
-configuración, y lo escrito ahí manda siempre:
+### Que clasifique la IA
+
+Las palabras clave aciertan lo evidente y fallan con los títulos opacos. Claude
+lee además una muestra de los subrayados de cada libro, así que sabe de qué va
+«The Hard Thing About Hard Things» aunque el título no lo diga:
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."     # console.anthropic.com
+kindle-sync clasificar
+```
+
+Solo toca los libros sin tema; con `--rehacer` reclasifica todos. Además de la
+categoría, escribe una frase sobre de qué trata cada libro, que aparece en su
+nota y en la de su tema.
+
+Detalles: los libros van **por lotes** (una petición cada 10, no una por
+libro), la respuesta se pide con un **esquema JSON** para no tener que
+interpretar texto libre, y las categorías nuevas que invente se reutilizan en
+los lotes siguientes para que no acabe con tres nombres del mismo tema. Si la
+API falla o no hay clave, cada libro se queda con lo que diga el clasificador
+por palabras clave: nunca te quedas sin clasificación.
+
+Para que corra sola en cada sincronización, pon `activado = true` en `[ia]`.
+
+### Corregir a mano
+
+La clasificación se equivoca a veces. Se corrige en la configuración, y lo
+escrito ahí manda siempre — también sobre la IA:
 
 ```toml
 [categorias]

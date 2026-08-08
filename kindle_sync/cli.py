@@ -79,6 +79,11 @@ def main(argv: list[str] | None = None) -> int:
     p_limpiar.add_argument("--aplicar", action="store_true",
                            help="hazlo de verdad (sin esto solo enseña qué cambiaría)")
 
+    p_clasificar = sub.add_parser(
+        "clasificar", help="clasifica los libros por temática con Claude")
+    p_clasificar.add_argument("--rehacer", action="store_true",
+                              help="reclasifica también los que ya tienen tema")
+
     sub.add_parser("indice", help="regenera la nota índice con el mapa mental por temas")
 
     sub.add_parser("watch", help="vigila en segundo plano y sincroniza solo")
@@ -171,6 +176,9 @@ def _dispatch(args) -> int:
         else:
             print(f"\n{len(cambios)} libro(s) cambiarían. Repite con --aplicar.")
         return 0
+
+    if args.cmd == "clasificar":
+        return _clasificar(conf, args.rehacer)
 
     if args.cmd == "indice":
         syncer = Syncer(conf)
@@ -344,6 +352,43 @@ def _lector(dump: Path | None) -> int:
 
     if dump:
         print(f"\nVolcado guardado en {dump}")
+    return 0
+
+
+def _clasificar(conf: cfg.Config, rehacer: bool) -> int:
+    from .ia import SinClave, hay_clave
+
+    if not hay_clave():
+        print("Falta ANTHROPIC_API_KEY en el entorno.", file=sys.stderr)
+        print("Consíguela en https://console.anthropic.com y expórtala:",
+              file=sys.stderr)
+        print('  export ANTHROPIC_API_KEY="sk-ant-..."', file=sys.stderr)
+        return 2
+
+    syncer = Syncer(conf)
+    libros = syncer.libros()
+    if not libros:
+        print("No hay libros todavía. Sincroniza primero.")
+        return 0
+
+    try:
+        cambiados = syncer.clasificar_con_ia(libros, rehacer=rehacer)
+    except SinClave as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    if not cambiados:
+        print("Todos los libros ya tenían tema. Usa --rehacer para reclasificarlos.")
+        return 0
+
+    print(f"\n{cambiados} libro(s) clasificados por Claude:\n")
+    por_tema: dict[str, list[str]] = {}
+    for libro in syncer.libros():
+        por_tema.setdefault(libro.categoria or "?", []).append(libro.title)
+    for tema, titulos in sorted(por_tema.items(), key=lambda p: -len(p[1])):
+        print(f"  {tema} ({len(titulos)})")
+        for titulo in titulos:
+            print(f"      {titulo[:60]}")
     return 0
 
 

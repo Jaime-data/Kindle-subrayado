@@ -62,6 +62,17 @@ dias = 30
 # Cada cuánto se revisa el buzón, en segundos.
 intervalo = 900
 
+[ia]
+# Clasifica los libros por temática con Claude, leyendo una muestra de sus
+# subrayados. Necesita ANTHROPIC_API_KEY en el entorno.
+# Sin esto se usa un clasificador por palabras clave, que acierta menos.
+activado = false
+modelo = "claude-opus-5"
+# Cuánto razona el modelo: low basta para clasificar.
+esfuerzo = "low"
+# Libros por petición.
+lote = 10
+
 [categorias]
 # Correcciones a mano de la clasificación automática. La clave es el título
 # del libro (o un trozo suyo) y el valor, la categoría que quieras.
@@ -106,6 +117,14 @@ class CorreoConfig:
 
 
 @dataclass
+class IaConfig:
+    activado: bool = False
+    modelo: str = "claude-opus-5"
+    esfuerzo: str = "low"
+    lote: int = 10
+
+
+@dataclass
 class AvisosConfig:
     notificaciones: bool = True
 
@@ -116,6 +135,7 @@ class Config:
     nube: CloudConfig = field(default_factory=CloudConfig)
     usb: UsbConfig = field(default_factory=UsbConfig)
     correo: CorreoConfig = field(default_factory=CorreoConfig)
+    ia: IaConfig = field(default_factory=IaConfig)
     avisos: AvisosConfig = field(default_factory=AvisosConfig)
     categorias: dict[str, str] = field(default_factory=dict)
 
@@ -148,6 +168,7 @@ def load(path: Path | None = None) -> Config:
         nube=CloudConfig(**data.get("nube", {})),
         usb=UsbConfig(**data.get("usb", {})),
         correo=CorreoConfig(**data.get("correo", {})),
+        ia=IaConfig(**data.get("ia", {})),
         avisos=AvisosConfig(**data.get("avisos", {})),
         categorias={str(k): str(v) for k, v in data.get("categorias", {}).items()},
     )

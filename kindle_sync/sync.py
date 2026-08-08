@@ -8,7 +8,7 @@ from pathlib import Path
 
 from . import config as cfg
 from .models import Book, Highlight, group_by_book, limpiar_titulo, slugify
-from .categorias import clasificar
+from .categorias import SIN_CLASIFICAR, clasificar
 from .sinks.indice import IndiceSink
 from .sinks.temas import TemasSink
 from .sinks.obsidian import ObsidianSink
@@ -149,12 +149,62 @@ class Syncer:
             self.escribir_indice()
         return result
 
-    def clasificar_libro(self, book: Book) -> str:
-        """Asigna tema al libro. Lo escrito a mano en la configuración manda."""
+    def clasificar_con_ia(self, libros: list[Book], rehacer: bool = False) -> int:
+        """Clasifica con Claude los libros que no tengan tema (o todos).
+
+        Si la IA falla o no está configurada, cada libro se queda con lo que
+        diga el clasificador por palabras clave: nunca se pierde la
+        clasificación por un problema de red o de clave.
+        """
+        from .ia import clasificar_libros
+
+        pendientes = [l for l in libros
+                      if rehacer or not l.categoria or l.categoria == SIN_CLASIFICAR]
+        if not pendientes:
+            return 0
+
+        veredictos = clasificar_libros(
+            pendientes,
+            categorias=self._categorias_en_uso(libros),
+            modelo=self.conf.ia.modelo,
+            esfuerzo=self.conf.ia.esfuerzo,
+            lote=self.conf.ia.lote,
+        )
+
+        cambiados = 0
+        for libro in pendientes:
+            veredicto = veredictos.get(libro.key)
+            if veredicto is None:
+                continue
+            manual = self._categoria_manual(libro)
+            libro.categoria = manual or veredicto.categoria
+            libro.descripcion = veredicto.descripcion or libro.descripcion
+            self.store.save(libro.key, libro)
+            self.sink.write(libro)   # la nota lleva la categoría en el frontmatter
+            cambiados += 1
+            log.info("IA: %s -> %s (%s)", libro.title, libro.categoria, veredicto.confianza)
+
+        if cambiados:
+            self.escribir_indice()
+        return cambiados
+
+    def _categorias_en_uso(self, libros: list[Book]) -> list[str]:
+        from .categorias import TAXONOMIA
+
+        vistas = [l.categoria for l in libros if l.categoria and l.categoria != SIN_CLASIFICAR]
+        return list(dict.fromkeys(list(TAXONOMIA) + vistas + list(self.conf.categorias.values())))
+
+    def _categoria_manual(self, book: Book) -> str | None:
         for patron, categoria in self.conf.categorias.items():
             if patron.casefold() in book.title.casefold():
-                book.categoria = categoria
                 return categoria
+        return None
+
+    def clasificar_libro(self, book: Book) -> str:
+        """Asigna tema al libro. Lo escrito a mano en la configuración manda."""
+        if manual := self._categoria_manual(book):
+            book.categoria = manual
+            return manual
 
         textos = [h.text for h in book.highlights.values()]
         categoria, _ = clasificar(book.title, book.author, textos)

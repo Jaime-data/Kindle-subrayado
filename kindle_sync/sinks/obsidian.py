@@ -71,6 +71,8 @@ class ObsidianSink:
         ]
         if book.author:
             lines += [f"*{book.author}*", ""]
+        if book.descripcion:
+            lines += [f"> {book.descripcion}", ""]
 
         for hl in highlights:
             lines += _render_highlight(hl)

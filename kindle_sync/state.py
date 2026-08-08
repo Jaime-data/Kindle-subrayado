@@ -33,7 +33,8 @@ class Store:
         except json.JSONDecodeError:
             return None
         book = Book(title=data["title"], author=data.get("author"),
-                    asin=data.get("asin"), categoria=data.get("categoria"))
+                    asin=data.get("asin"), categoria=data.get("categoria"),
+                    descripcion=data.get("descripcion"))
         for raw in data.get("highlights", []):
             book.add(_from_json(raw))
         return book
@@ -45,6 +46,7 @@ class Store:
             "author": book.author,
             "asin": book.asin,
             "categoria": book.categoria,
+            "descripcion": book.descripcion,
             "highlights": [_to_json(h) for h in book.sorted_highlights()],
         }
         _atomic_write(self._path(key), json.dumps(payload, ensure_ascii=False, indent=1))
