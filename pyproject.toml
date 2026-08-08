@@ -13,6 +13,8 @@ dependencies = []
 [project.optional-dependencies]
 # Necesario solo para la fuente «nube» (read.amazon.com).
 nube = ["playwright>=1.40"]
+# Necesario solo para clasificar por temática con IA.
+ia = ["openai>=1.40"]
 dev = ["pytest>=7"]
 
 [project.scripts]

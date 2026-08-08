@@ -150,7 +150,7 @@ class Syncer:
         return result
 
     def clasificar_con_ia(self, libros: list[Book], rehacer: bool = False) -> int:
-        """Clasifica con Claude los libros que no tengan tema (o todos).
+        """Clasifica con IA los libros que no tengan tema (o todos).
 
         Si la IA falla o no está configurada, cada libro se queda con lo que
         diga el clasificador por palabras clave: nunca se pierde la

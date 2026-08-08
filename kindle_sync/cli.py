@@ -80,9 +80,11 @@ def main(argv: list[str] | None = None) -> int:
                            help="hazlo de verdad (sin esto solo enseña qué cambiaría)")
 
     p_clasificar = sub.add_parser(
-        "clasificar", help="clasifica los libros por temática con Claude")
+        "clasificar", help="clasifica los libros por temática con IA")
     p_clasificar.add_argument("--rehacer", action="store_true",
                               help="reclasifica también los que ya tienen tema")
+
+    sub.add_parser("modelos", help="lista los modelos que admite tu cuenta de OpenAI")
 
     sub.add_parser("indice", help="regenera la nota índice con el mapa mental por temas")
 
@@ -176,6 +178,9 @@ def _dispatch(args) -> int:
         else:
             print(f"\n{len(cambios)} libro(s) cambiarían. Repite con --aplicar.")
         return 0
+
+    if args.cmd == "modelos":
+        return _modelos()
 
     if args.cmd == "clasificar":
         return _clasificar(conf, args.rehacer)
@@ -355,14 +360,33 @@ def _lector(dump: Path | None) -> int:
     return 0
 
 
+def _modelos() -> int:
+    from .ia import ErrorModelo, SinClave, modelos_disponibles
+
+    try:
+        modelos = modelos_disponibles()
+    except (SinClave, ErrorModelo) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except Exception as exc:
+        print(f"error consultando los modelos: {exc}", file=sys.stderr)
+        return 2
+
+    for modelo in modelos:
+        print(f"  {modelo}")
+    print(f"\n{len(modelos)} modelo(s). Elige uno con:")
+    print("  kindle-sync config --set ia.modelo=NOMBRE")
+    return 0
+
+
 def _clasificar(conf: cfg.Config, rehacer: bool) -> int:
-    from .ia import SinClave, hay_clave
+    from .ia import ErrorModelo, SinClave, hay_clave
 
     if not hay_clave():
-        print("Falta ANTHROPIC_API_KEY en el entorno.", file=sys.stderr)
-        print("Consíguela en https://console.anthropic.com y expórtala:",
+        print("Falta OPENAI_API_KEY en el entorno.", file=sys.stderr)
+        print("Consíguela en https://platform.openai.com/api-keys y expórtala:",
               file=sys.stderr)
-        print('  export ANTHROPIC_API_KEY="sk-ant-..."', file=sys.stderr)
+        print('  export OPENAI_API_KEY="sk-..."', file=sys.stderr)
         return 2
 
     syncer = Syncer(conf)
@@ -373,7 +397,7 @@ def _clasificar(conf: cfg.Config, rehacer: bool) -> int:
 
     try:
         cambiados = syncer.clasificar_con_ia(libros, rehacer=rehacer)
-    except SinClave as exc:
+    except (SinClave, ErrorModelo) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
@@ -381,7 +405,7 @@ def _clasificar(conf: cfg.Config, rehacer: bool) -> int:
         print("Todos los libros ya tenían tema. Usa --rehacer para reclasificarlos.")
         return 0
 
-    print(f"\n{cambiados} libro(s) clasificados por Claude:\n")
+    print(f"\n{cambiados} libro(s) clasificados por IA:\n")
     por_tema: dict[str, list[str]] = {}
     for libro in syncer.libros():
         por_tema.setdefault(libro.categoria or "?", []).append(libro.title)

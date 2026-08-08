@@ -231,7 +231,8 @@ se actualizan a partir de ellos.
 | `kindle-sync libros --dump CARPETA` | Además guarda el HTML y capturas, para depurar |
 | `kindle-sync watch` | Vigila en primer plano (útil para depurar) |
 | `kindle-sync status` | Estado: destino, Kindle conectado, sesión, agente |
-| `kindle-sync clasificar` | Clasifica por temática con Claude, leyendo los subrayados |
+| `kindle-sync clasificar` | Clasifica por temática con IA, leyendo los subrayados |
+| `kindle-sync modelos` | Lista los modelos que admite tu cuenta de OpenAI |
 | `kindle-sync clasificar --rehacer` | Reclasifica también los que ya tienen tema |
 | `kindle-sync indice` | Regenera la nota índice con el mapa mental por temas |
 | `kindle-sync limpiar` | Enseña qué títulos tienen ruido de webs de descarga |
@@ -324,12 +325,15 @@ sola — pero solo si no la has editado por debajo del marcador final.
 
 ### Que clasifique la IA
 
-Las palabras clave aciertan lo evidente y fallan con los títulos opacos. Claude
-lee además una muestra de los subrayados de cada libro, así que sabe de qué va
-«The Hard Thing About Hard Things» aunque el título no lo diga:
+Las palabras clave aciertan lo evidente y fallan con los títulos opacos. Un
+modelo que lee además una muestra de los subrayados de cada libro sabe de qué
+va «The Hard Thing About Hard Things» aunque el título no lo diga:
 
 ```bash
-export ANTHROPIC_API_KEY="sk-ant-..."     # console.anthropic.com
+pip install -e ".[ia]"
+export OPENAI_API_KEY="sk-..."        # platform.openai.com/api-keys
+kindle-sync modelos                   # qué modelos admite tu cuenta
+kindle-sync config --set ia.modelo=EL-QUE-QUIERAS
 kindle-sync clasificar
 ```
 
@@ -338,11 +342,15 @@ categoría, escribe una frase sobre de qué trata cada libro, que aparece en su
 nota y en la de su tema.
 
 Detalles: los libros van **por lotes** (una petición cada 10, no una por
-libro), la respuesta se pide con un **esquema JSON** para no tener que
+libro), la respuesta se pide con un **esquema JSON estricto** para no tener que
 interpretar texto libre, y las categorías nuevas que invente se reutilizan en
 los lotes siguientes para que no acabe con tres nombres del mismo tema. Si la
 API falla o no hay clave, cada libro se queda con lo que diga el clasificador
 por palabras clave: nunca te quedas sin clasificación.
+
+El parámetro de razonamiento solo lo admiten algunos modelos. Se manda y, si el
+modelo lo rechaza, se reintenta sin él — así no hay que mantener una lista de
+qué modelo es de cada tipo, que caducaría con cada lanzamiento.
 
 Para que corra sola en cada sincronización, pon `activado = true` en `[ia]`.
 

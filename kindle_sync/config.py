@@ -63,12 +63,14 @@ dias = 30
 intervalo = 900
 
 [ia]
-# Clasifica los libros por temática con Claude, leyendo una muestra de sus
-# subrayados. Necesita ANTHROPIC_API_KEY en el entorno.
+# Clasifica los libros por temática con OpenAI, leyendo una muestra de sus
+# subrayados. Necesita OPENAI_API_KEY en el entorno.
 # Sin esto se usa un clasificador por palabras clave, que acierta menos.
 activado = false
-modelo = "claude-opus-5"
-# Cuánto razona el modelo: low basta para clasificar.
+# Comprueba con «kindle-sync modelos» cuáles admite tu cuenta.
+modelo = "gpt-5.6-luna"
+# Cuánto razona el modelo, si es de razonamiento: low basta para clasificar.
+# Déjalo vacío para no mandar el parámetro.
 esfuerzo = "low"
 # Libros por petición.
 lote = 10
@@ -119,7 +121,7 @@ class CorreoConfig:
 @dataclass
 class IaConfig:
     activado: bool = False
-    modelo: str = "claude-opus-5"
+    modelo: str = "gpt-5.6-luna"
     esfuerzo: str = "low"
     lote: int = 10
 

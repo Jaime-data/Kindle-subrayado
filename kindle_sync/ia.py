@@ -1,12 +1,12 @@
-"""Clasificación de libros por temática usando Claude.
+"""Clasificación de libros por temática usando la API de OpenAI.
 
 Las palabras clave aciertan lo evidente y fallan con los títulos opacos: «The
 Hard Thing About Hard Things» no dice de qué va. Un modelo que lee además una
 muestra de los subrayados sí lo sabe.
 
-Se pide la respuesta con un esquema JSON (structured outputs), así que no hay
-que interpretar texto libre, y los libros van por lotes para no hacer una
-petición por libro.
+Se pide la respuesta con un esquema JSON estricto, así que no hay que
+interpretar texto libre, y los libros van por lotes para no hacer una petición
+por libro.
 """
 
 from __future__ import annotations
@@ -21,10 +21,11 @@ from .models import Book
 
 log = logging.getLogger("kindle-sync")
 
-MODELO = "claude-opus-5"
+MODELO = "gpt-5.6-luna"
 LOTE = 10                # libros por petición
 SUBRAYADOS_POR_LIBRO = 8
 LARGO_SUBRAYADO = 300
+VARIABLE_CLAVE = "OPENAI_API_KEY"
 
 SISTEMA = """\
 Eres un bibliotecario que ordena la biblioteca personal de alguien para que \
@@ -74,6 +75,10 @@ class SinClave(RuntimeError):
     pass
 
 
+class ErrorModelo(RuntimeError):
+    pass
+
+
 class Veredicto:
     __slots__ = ("categoria", "descripcion", "confianza")
 
@@ -87,23 +92,32 @@ class Veredicto:
 
 
 def hay_clave() -> bool:
-    return bool(os.environ.get("ANTHROPIC_API_KEY"))
+    return bool(os.environ.get(VARIABLE_CLAVE))
+
+
+def cliente_openai():
+    if not hay_clave():
+        raise SinClave(
+            f"Falta {VARIABLE_CLAVE}. Consíguela en https://platform.openai.com/api-keys "
+            "y expórtala, o desactiva [ia] en la configuración.")
+    import openai
+
+    return openai.OpenAI()
+
+
+def modelos_disponibles() -> list[str]:
+    """Pregunta a la API qué modelos tiene disponibles esta cuenta."""
+    return sorted(m.id for m in cliente_openai().models.list())
 
 
 def clasificar_libros(libros: list[Book], categorias: list[str] | None = None,
                       modelo: str = MODELO, esfuerzo: str = "low",
                       lote: int = LOTE) -> dict[str, Veredicto]:
-    """Clasifica libros con Claude. Devuelve {clave del libro: Veredicto}."""
+    """Clasifica libros con OpenAI. Devuelve {clave del libro: Veredicto}."""
     if not libros:
         return {}
-    if not hay_clave():
-        raise SinClave(
-            "Falta ANTHROPIC_API_KEY. Consíguela en https://console.anthropic.com "
-            "y expórtala, o desactiva [ia] en la configuración.")
 
-    import anthropic
-
-    cliente = anthropic.Anthropic()
+    cliente = cliente_openai()
     conocidas = list(categorias or TAXONOMIA)
     salida: dict[str, Veredicto] = {}
 
@@ -123,22 +137,12 @@ def clasificar_libros(libros: list[Book], categorias: list[str] | None = None,
 
 def _clasificar_lote(cliente, libros: list[Book], categorias: list[str],
                      modelo: str, esfuerzo: str) -> dict[str, Veredicto]:
-    respuesta = cliente.messages.create(
-        model=modelo,
-        max_tokens=16000,
-        system=SISTEMA,
-        output_config={
-            "effort": esfuerzo,
-            "format": {"type": "json_schema", "schema": ESQUEMA},
-        },
-        messages=[{"role": "user", "content": _peticion(libros, categorias)}],
-    )
+    mensajes = [
+        {"role": "system", "content": SISTEMA},
+        {"role": "user", "content": _peticion(libros, categorias)},
+    ]
+    texto = _pedir(cliente, mensajes, modelo, esfuerzo)
 
-    if respuesta.stop_reason == "refusal":
-        log.warning("IA: la petición fue rechazada; se deja sin clasificar")
-        return {}
-
-    texto = next((b.text for b in respuesta.content if b.type == "text"), "")
     try:
         datos = json.loads(texto)
     except json.JSONDecodeError:
@@ -157,6 +161,69 @@ def _clasificar_lote(cliente, libros: list[Book], categorias: list[str],
             str(item.get("confianza", "media")).strip().lower(),
         )
     return salida
+
+
+def _pedir(cliente, mensajes: list[dict], modelo: str, esfuerzo: str) -> str:
+    """Lanza la petición, adaptándose a lo que el modelo y el SDK admitan.
+
+    Los modelos de razonamiento aceptan `reasoning`; los demás lo rechazan. En
+    vez de mantener una lista de qué modelo es de cada tipo —que caduca con
+    cada lanzamiento— se intenta con el parámetro y se reintenta sin él.
+    """
+    formato = {
+        "type": "json_schema",
+        "json_schema": {"name": "clasificacion", "schema": ESQUEMA, "strict": True},
+    }
+
+    intentos = [{"reasoning_effort": esfuerzo}, {}] if esfuerzo else [{}]
+    ultimo: Exception | None = None
+
+    for extra in intentos:
+        try:
+            respuesta = cliente.chat.completions.create(
+                model=modelo,
+                messages=mensajes,
+                response_format=formato,
+                **extra,
+            )
+        except TypeError as exc:            # el SDK no conoce el parámetro
+            ultimo = exc
+            continue
+        except Exception as exc:
+            if extra and _es_parametro_no_admitido(exc):
+                ultimo = exc
+                continue
+            raise ErrorModelo(_explicar(exc, modelo)) from exc
+
+        return _texto(respuesta)
+
+    raise ErrorModelo(_explicar(ultimo, modelo)) if ultimo else ErrorModelo("sin respuesta")
+
+
+def _texto(respuesta) -> str:
+    eleccion = respuesta.choices[0]
+    if getattr(eleccion, "finish_reason", None) == "content_filter":
+        log.warning("IA: respuesta bloqueada por el filtro de contenido")
+        return ""
+    return eleccion.message.content or ""
+
+
+def _es_parametro_no_admitido(exc: Exception) -> bool:
+    texto = str(exc).lower()
+    return ("unsupported" in texto or "unrecognized" in texto
+            or "unknown parameter" in texto) and "reasoning" in texto
+
+
+def _explicar(exc: Exception | None, modelo: str) -> str:
+    texto = str(exc or "")
+    if re.search(r"model.*(not found|does not exist)|invalid.*model", texto, re.IGNORECASE):
+        return (f"tu cuenta no reconoce el modelo «{modelo}». "
+                "Mira cuáles tienes con: kindle-sync modelos")
+    if re.search(r"invalid.*api key|incorrect api key", texto, re.IGNORECASE):
+        return f"la clave de {VARIABLE_CLAVE} no es válida."
+    if re.search(r"insufficient_quota|exceeded your current quota", texto, re.IGNORECASE):
+        return "la cuenta de OpenAI no tiene saldo."
+    return texto
 
 
 def _peticion(libros: list[Book], categorias: list[str]) -> str:
