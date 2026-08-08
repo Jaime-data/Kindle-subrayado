@@ -62,6 +62,11 @@ dias = 30
 # Cada cuánto se revisa el buzón, en segundos.
 intervalo = 900
 
+[categorias]
+# Correcciones a mano de la clasificación automática. La clave es el título
+# del libro (o un trozo suyo) y el valor, la categoría que quieras.
+# "The Hard Thing About Hard Things" = "Liderazgo y equipos"
+
 [avisos]
 # Notificación de macOS cuando llegan subrayados nuevos.
 notificaciones = true
@@ -112,6 +117,7 @@ class Config:
     usb: UsbConfig = field(default_factory=UsbConfig)
     correo: CorreoConfig = field(default_factory=CorreoConfig)
     avisos: AvisosConfig = field(default_factory=AvisosConfig)
+    categorias: dict[str, str] = field(default_factory=dict)
 
     @property
     def clippings_path(self) -> Path | None:
@@ -143,6 +149,7 @@ def load(path: Path | None = None) -> Config:
         usb=UsbConfig(**data.get("usb", {})),
         correo=CorreoConfig(**data.get("correo", {})),
         avisos=AvisosConfig(**data.get("avisos", {})),
+        categorias={str(k): str(v) for k, v in data.get("categorias", {}).items()},
     )
 
 

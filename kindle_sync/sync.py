@@ -8,6 +8,8 @@ from pathlib import Path
 
 from . import config as cfg
 from .models import Book, Highlight, group_by_book, limpiar_titulo, slugify
+from .categorias import clasificar
+from .sinks.indice import IndiceSink
 from .sinks.obsidian import ObsidianSink
 from .sources import clippings
 from .state import Store
@@ -41,6 +43,7 @@ class Syncer:
             conf.obsidian.subcarpeta,
             include_bookmarks=conf.obsidian.incluir_marcadores,
         )
+        self.indice = IndiceSink(conf.obsidian.vault, conf.obsidian.subcarpeta)
 
     # --- fuentes -----------------------------------------------------------
 
@@ -135,10 +138,36 @@ class Syncer:
                 log.info("[simulación] %s: %d nuevo(s)", book.title, nuevos)
                 continue
 
+            self.clasificar_libro(book)
             self.store.save(key, book)
             path = self.sink.write(book)
             log.info("%s: %d nuevo(s) -> %s", book.title, nuevos, path)
+
+        if result.libros_tocados and not self.dry_run:
+            self.escribir_indice()
         return result
+
+    def clasificar_libro(self, book: Book) -> str:
+        """Asigna tema al libro. Lo escrito a mano en la configuración manda."""
+        for patron, categoria in self.conf.categorias.items():
+            if patron.casefold() in book.title.casefold():
+                book.categoria = categoria
+                return categoria
+
+        textos = [h.text for h in book.highlights.values()]
+        categoria, _ = clasificar(book.title, book.author, textos)
+        book.categoria = categoria
+        return categoria
+
+    def libros(self) -> list[Book]:
+        return [b for key in self.store.keys() if (b := self.store.load(key))]
+
+    def escribir_indice(self) -> Path:
+        libros = self.libros()
+        for libro in libros:  # por si alguno viene de antes de las categorías
+            if not libro.categoria:
+                self.clasificar_libro(libro)
+        return self.indice.write(libros, self.sink.nombre_nota)
 
     def limpiar_titulos(self, dry_run: bool = False) -> list[tuple[str, str]]:
         """Renombra los libros ya guardados con el título limpio.
@@ -176,6 +205,8 @@ class Syncer:
             nueva = self.sink.write(book)
             if antigua != nueva:
                 antigua.unlink(missing_ok=True)
+        if cambios and not dry_run:
+            self.escribir_indice()
         return cambios
 
     def rebuild(self) -> int:
@@ -187,6 +218,8 @@ class Syncer:
                 continue
             self.sink.write(book)
             count += 1
+        if count:
+            self.escribir_indice()
         return count
 
 

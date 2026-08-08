@@ -8,6 +8,11 @@ from kindle_sync.sinks.obsidian import END_MARKER, ObsidianSink
 from kindle_sync.sync import Syncer
 
 
+def nota_del_libro(sink):
+    """La nota del libro, ignorando el índice que también vive en la carpeta."""
+    return next(p for p in sink.root.glob("*.md") if p.stem != "Índice")
+
+
 def hl(text, **kw):
     kw.setdefault("book_title", "Sapiens")
     kw.setdefault("book_author", "Yuval Noah Harari")
@@ -60,7 +65,7 @@ def test_sync_incremental_no_duplica(syncer):
     r2 = syncer.ingest([hl("Uno", location="10"), hl("Tres", location="30")])
     assert r2.nuevos == 1
 
-    path = next((syncer.sink.root).glob("*.md"))
+    path = nota_del_libro(syncer.sink)
     contenido = path.read_text(encoding="utf-8")
     assert contenido.count("^k-") == 3
     assert "subrayados: 3" in contenido
@@ -68,7 +73,7 @@ def test_sync_incremental_no_duplica(syncer):
 
 def test_conserva_lo_escrito_bajo_el_marcador(syncer):
     syncer.ingest([hl("Uno", location="10")])
-    path = next(syncer.sink.root.glob("*.md"))
+    path = nota_del_libro(syncer.sink)
     path.write_text(path.read_text(encoding="utf-8") + "\n## Mis ideas\nAlgo mío.\n",
                     encoding="utf-8")
 
@@ -81,14 +86,14 @@ def test_conserva_lo_escrito_bajo_el_marcador(syncer):
 def test_nota_asociada_se_conserva_al_fusionar(syncer):
     syncer.ingest([hl("Texto", location="10")])
     syncer.ingest([hl("Texto", location="10", note="mi comentario")])
-    contenido = next(syncer.sink.root.glob("*.md")).read_text(encoding="utf-8")
+    contenido = nota_del_libro(syncer.sink).read_text(encoding="utf-8")
     assert "**Nota:** mi comentario" in contenido
     assert contenido.count("^k-") == 1
 
 
 def test_rebuild_regenera_desde_el_estado(syncer):
     syncer.ingest([hl("Uno", location="10")])
-    path = next(syncer.sink.root.glob("*.md"))
+    path = nota_del_libro(syncer.sink)
     path.unlink()
     assert syncer.rebuild() == 1
     assert path.exists()

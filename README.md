@@ -231,6 +231,7 @@ se actualizan a partir de ellos.
 | `kindle-sync libros --dump CARPETA` | Además guarda el HTML y capturas, para depurar |
 | `kindle-sync watch` | Vigila en primer plano (útil para depurar) |
 | `kindle-sync status` | Estado: destino, Kindle conectado, sesión, agente |
+| `kindle-sync indice` | Regenera la nota índice con el mapa mental por temas |
 | `kindle-sync limpiar` | Enseña qué títulos tienen ruido de webs de descarga |
 | `kindle-sync limpiar --aplicar` | Los renombra, fusionando duplicados y borrando notas viejas |
 | `kindle-sync config --set SECCION.CLAVE=VALOR` | Cambia un ajuste sin abrir el fichero |
@@ -271,6 +272,45 @@ Detalles que importan:
   `<!-- kindle-sync:fin -->` se conserva intacto** — escribe ahí tus notas.
 - Nada se borra nunca: el historial vive en `~/.local/state/kindle-sync/books/`.
   Si pierdes el vault, `kindle-sync rebuild` lo reconstruye entero.
+
+## Índice por temas (mapa mental)
+
+Cada libro se clasifica por tema —negocios, marketing, liderazgo, psicología,
+inversión…— mirando el título, el autor y una muestra de sus subrayados. El
+tema va al frontmatter y como etiqueta de Obsidian, y se genera una nota
+`Índice.md` con un mapa mental y las secciones por tema:
+
+````markdown
+```mermaid
+mindmap
+  root((Biblioteca))
+    Negocios
+      Traction- Get a Grip on your Bus…
+      The E-Myth Revisited
+    Marketing y ventas
+      El Plan de Marketing de 1-Página
+```
+````
+
+Obsidian dibuja ese bloque como un diagrama de verdad. Debajo van las
+secciones por tema con enlaces `[[...]]` a cada libro, así que el grafo de
+Obsidian también los conecta.
+
+El índice se regenera solo en cada sincronización. A mano:
+
+```bash
+kindle-sync indice
+```
+
+La clasificación es automática y a veces se equivoca — un título opaco como
+«The Hard Thing About Hard Things» no dice de qué va. Se corrige en la
+configuración, y lo escrito ahí manda siempre:
+
+```toml
+[categorias]
+"The Hard Thing About Hard Things" = "Liderazgo y equipos"
+"Storyworthy" = "Creatividad e ideas"
+```
 
 ## Títulos limpios
 

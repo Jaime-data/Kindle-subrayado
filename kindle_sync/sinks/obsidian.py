@@ -25,7 +25,11 @@ class ObsidianSink:
         self.include_bookmarks = include_bookmarks
 
     def path_for(self, book: Book) -> Path:
-        return self.root / f"{_safe_filename(book.title, book.author)}.md"
+        return self.root / f"{self.nombre_nota(book)}.md"
+
+    def nombre_nota(self, book: Book) -> str:
+        """Nombre de la nota sin extensión, que es como se enlaza en Obsidian."""
+        return _safe_filename(book.title, book.author)
 
     def write(self, book: Book) -> Path:
         path = self.path_for(book)
@@ -48,6 +52,8 @@ class ObsidianSink:
             f"titulo: {_yaml(book.title)}",
             f"autor: {_yaml(book.author or 'Desconocido')}",
         ]
+        if book.categoria:
+            lines.append(f"categoria: {_yaml(book.categoria)}")
         if book.asin:
             lines.append(f"asin: {_yaml(book.asin)}")
         lines += [
@@ -57,6 +63,7 @@ class ObsidianSink:
             "tags:",
             "  - kindle",
             "  - subrayados",
+            *([f"  - {_etiqueta(book.categoria)}"] if book.categoria else []),
             "---",
             "",
             f"# {book.title}",
@@ -106,6 +113,15 @@ def _safe_filename(title: str, author: str | None) -> str:
     name = re.sub(r'[\\/:*?"<>|]', "-", name)
     name = re.sub(r"\s+", " ", name).strip(" .")
     return name[:120] or "Sin titulo"
+
+
+def _etiqueta(categoria: str) -> str:
+    """Convierte «Marketing y ventas» en «marketing-y-ventas»: Obsidian no
+    admite espacios en las etiquetas."""
+    import unicodedata
+    texto = unicodedata.normalize("NFKD", categoria)
+    texto = "".join(c for c in texto if not unicodedata.combining(c))
+    return re.sub(r"[^\w-]+", "-", texto).strip("-").lower()
 
 
 def _yaml(value: str) -> str:

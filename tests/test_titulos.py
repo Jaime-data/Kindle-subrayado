@@ -94,8 +94,8 @@ def test_migrar_notas_ya_escritas_con_titulos_sucios(tmp_path):
     nueva = syncer.sink.root / "1984 - George Orwell.md"
     assert nueva.exists()
     assert "La guerra es la paz." in nueva.read_text(encoding="utf-8")
-    assert len(list(syncer.sink.root.glob("*.md"))) == 1
+    assert len([p for p in syncer.sink.root.glob("*.md") if p.stem != "Índice"]) == 1
 
     # Y un sync posterior no vuelve a crear el libro sucio.
     assert syncer.ingest([sucio]).nuevos == 0
-    assert len(list(syncer.sink.root.glob("*.md"))) == 1
+    assert len([p for p in syncer.sink.root.glob("*.md") if p.stem != "Índice"]) == 1

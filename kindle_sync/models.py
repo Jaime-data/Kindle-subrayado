@@ -130,6 +130,7 @@ class Book:
     title: str
     author: str | None = None
     asin: str | None = None
+    categoria: str | None = None
     highlights: dict[str, Highlight] = field(default_factory=dict)
 
     @property

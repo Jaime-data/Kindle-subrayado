@@ -79,6 +79,8 @@ def main(argv: list[str] | None = None) -> int:
     p_limpiar.add_argument("--aplicar", action="store_true",
                            help="hazlo de verdad (sin esto solo enseña qué cambiaría)")
 
+    sub.add_parser("indice", help="regenera la nota índice con el mapa mental por temas")
+
     sub.add_parser("watch", help="vigila en segundo plano y sincroniza solo")
     sub.add_parser("rebuild", help="regenera los .md desde el estado guardado")
     sub.add_parser("status", help="muestra configuración y estado actual")
@@ -168,6 +170,17 @@ def _dispatch(args) -> int:
             print(f"\n{len(cambios)} libro(s) renombrados. Notas y estado actualizados.")
         else:
             print(f"\n{len(cambios)} libro(s) cambiarían. Repite con --aplicar.")
+        return 0
+
+    if args.cmd == "indice":
+        syncer = Syncer(conf)
+        ruta = syncer.escribir_indice()
+        libros = syncer.libros()
+        temas = {l.categoria for l in libros}
+        print(f"{len(libros)} libro(s) en {len(temas)} tema(s) -> {ruta}")
+        for tema in sorted(t for t in temas if t):
+            cuantos = sum(1 for l in libros if l.categoria == tema)
+            print(f"  {cuantos:>3}  {tema}")
         return 0
 
     if args.cmd == "rebuild":
@@ -426,7 +439,9 @@ def _correo(conf: cfg.Config, args) -> int:
 def _status(conf: cfg.Config) -> int:
     vault = Path(conf.obsidian.vault).expanduser() / conf.obsidian.subcarpeta
     clippings = conf.clippings_path
-    notas = len(list(vault.glob("*.md"))) if vault.exists() else 0
+    from .sinks.indice import NOMBRE as NOMBRE_INDICE
+    notas = (len([p for p in vault.glob("*.md") if p.stem != NOMBRE_INDICE])
+             if vault.exists() else 0)
 
     print(f"Configuración   : {cfg.CONFIG_FILE}")
     print(f"Carpeta destino : {vault} ({'existe' if vault.exists() else 'aún no creada'})")
