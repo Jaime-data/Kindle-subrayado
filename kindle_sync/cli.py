@@ -74,6 +74,11 @@ def main(argv: list[str] | None = None) -> int:
                           default=[], dest="asignaciones",
                           help="p. ej. --set usb.punto_montaje=auto")
 
+    p_limpiar = sub.add_parser(
+        "limpiar", help="quita de los títulos el ruido de las webs de descarga")
+    p_limpiar.add_argument("--aplicar", action="store_true",
+                           help="hazlo de verdad (sin esto solo enseña qué cambiaría)")
+
     sub.add_parser("watch", help="vigila en segundo plano y sincroniza solo")
     sub.add_parser("rebuild", help="regenera los .md desde el estado guardado")
     sub.add_parser("status", help="muestra configuración y estado actual")
@@ -151,6 +156,19 @@ def _dispatch(args) -> int:
 
     if args.cmd == "correo":
         return _correo(conf, args)
+
+    if args.cmd == "limpiar":
+        cambios = Syncer(conf).limpiar_titulos(dry_run=not args.aplicar)
+        if not cambios:
+            print("Todos los títulos están ya limpios.")
+            return 0
+        for antes, despues in cambios:
+            print(f"  {antes}\n    → {despues}")
+        if args.aplicar:
+            print(f"\n{len(cambios)} libro(s) renombrados. Notas y estado actualizados.")
+        else:
+            print(f"\n{len(cambios)} libro(s) cambiarían. Repite con --aplicar.")
+        return 0
 
     if args.cmd == "rebuild":
         n = Syncer(conf).rebuild()

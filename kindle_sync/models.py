@@ -34,6 +34,46 @@ def slugify(text: str, max_len: int = 80) -> str:
     return text[:max_len].strip("-") or "sin-titulo"
 
 
+# Restos que dejan las webs de descarga en el nombre del fichero y que el
+# Kindle acaba mostrando como si fueran parte del título.
+_RUIDO = re.compile(
+    r"""\(?\s*(?:z[\s._-]*librar(?:y|ies)|1lib|z[\s._-]*lib)"""
+    r"""[\w\s.,_-]*\)?""", re.IGNORECASE)
+# No incluye paréntesis: «Céntrate (Deep Work)» lleva uno con sentido.
+_SUFIJO_SOBRANTE = re.compile(r"[\s_,;.\-–—]+$")
+_PARENTESIS_VACIOS = re.compile(r"\(\s*\)")
+
+
+def limpiar_titulo(titulo: str, autor: str | None = None) -> str:
+    """Quita del título el ruido de las webs de descarga y el autor repetido.
+
+    «Radical Candor (Kim Scott) (z-library.sk, 1lib.sk, z-lib.sk)» es, para
+    quien lee sus notas, «Radical Candor».
+    """
+    limpio = _RUIDO.sub(" ", titulo)
+    limpio = limpio.replace("_", " ")
+
+    if autor:
+        # El autor suele venir repetido entre paréntesis dentro del título.
+        apellido = autor.split()[-1] if autor.split() else ""
+        for repetido in (autor, f"{apellido}, {autor.split()[0]}" if autor.split() else ""):
+            if repetido:
+                limpio = re.sub(rf"\(\s*{re.escape(repetido)}\s*\)", " ", limpio,
+                                flags=re.IGNORECASE)
+
+    limpio = _PARENTESIS_VACIOS.sub(" ", limpio)
+    limpio = _WS.sub(" ", limpio).strip()
+    limpio = _SUFIJO_SOBRANTE.sub("", limpio)
+
+    # Al quitar el ruido puede quedar un paréntesis sin pareja.
+    while limpio.count(")") > limpio.count("("):
+        limpio = _SUFIJO_SOBRANTE.sub("", limpio.rstrip(")").rstrip())
+    while limpio.count("(") > limpio.count(")"):
+        limpio = _SUFIJO_SOBRANTE.sub("", limpio[:limpio.rfind("(")].rstrip())
+
+    return limpio or titulo.strip()
+
+
 @dataclass(frozen=True)
 class Highlight:
     book_title: str
@@ -51,10 +91,12 @@ class Highlight:
     def uid(self) -> str:
         """Identidad estable e independiente de la fuente.
 
-        Se basa solo en libro + texto normalizado: así un subrayado que llega
-        por la nube y por USB cuenta como uno solo.
+        Se basa en el libro (con el título ya limpio) y el texto normalizado:
+        así un subrayado cuenta una sola vez aunque llegue por vías distintas
+        y con el título más o menos ensuciado por la web de descarga.
         """
-        base = f"{normalize(self.book_title)}|{self.kind}|{normalize(self.text)}"
+        titulo = limpiar_titulo(self.book_title, self.book_author)
+        base = f"{normalize(titulo)}|{self.kind}|{normalize(self.text)}"
         if self.kind == "bookmark":  # un marcador no tiene texto que lo distinga
             base += f"|{self.location or self.page or ''}"
         return hashlib.sha1(base.encode("utf-8")).hexdigest()[:12]
@@ -110,10 +152,14 @@ class Book:
 def group_by_book(highlights: Iterable[Highlight]) -> dict[str, Book]:
     books: dict[str, Book] = {}
     for hl in highlights:
-        key = slugify(f"{hl.book_title} {hl.book_author or ''}")
+        # El título se limpia aquí, el único punto por el que pasan todas
+        # las fuentes, para que la clave del libro sea la misma vengan de
+        # donde vengan los subrayados.
+        titulo = limpiar_titulo(hl.book_title, hl.book_author)
+        key = slugify(f"{titulo} {hl.book_author or ''}")
         book = books.get(key)
         if book is None:
-            book = Book(title=hl.book_title, author=hl.book_author, asin=hl.asin)
+            book = Book(title=titulo, author=hl.book_author, asin=hl.asin)
             books[key] = book
         book.author = book.author or hl.book_author
         book.asin = book.asin or hl.asin

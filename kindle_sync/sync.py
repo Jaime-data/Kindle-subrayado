@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import config as cfg
-from .models import Book, Highlight, group_by_book
+from .models import Book, Highlight, group_by_book, limpiar_titulo, slugify
 from .sinks.obsidian import ObsidianSink
 from .sources import clippings
 from .state import Store
@@ -139,6 +139,44 @@ class Syncer:
             path = self.sink.write(book)
             log.info("%s: %d nuevo(s) -> %s", book.title, nuevos, path)
         return result
+
+    def limpiar_titulos(self, dry_run: bool = False) -> list[tuple[str, str]]:
+        """Renombra los libros ya guardados con el título limpio.
+
+        Cambiar el título cambia la clave del libro, así que hay que mover el
+        estado, fusionar los que acaben coincidiendo y borrar la nota vieja;
+        si no, quedarían duplicados al siguiente sync.
+        """
+        cambios: list[tuple[str, str]] = []
+        for key in self.store.keys():
+            book = self.store.load(key)
+            if book is None:
+                continue
+            limpio = limpiar_titulo(book.title, book.author)
+            if limpio == book.title:
+                continue
+
+            cambios.append((book.title, limpio))
+            if dry_run:
+                continue
+
+            antigua = self.sink.path_for(book)
+            nueva_key = slugify(f"{limpio} {book.author or ''}")
+            book.title = limpio
+
+            existente = self.store.load(nueva_key) if nueva_key != key else None
+            if existente is not None:  # dos títulos sucios que limpian igual
+                for hl in book.highlights.values():
+                    existente.add(hl)
+                book = existente
+
+            self.store.save(nueva_key, book)
+            if nueva_key != key:
+                (self.store.dir / f"{key}.json").unlink(missing_ok=True)
+            nueva = self.sink.write(book)
+            if antigua != nueva:
+                antigua.unlink(missing_ok=True)
+        return cambios
 
     def rebuild(self) -> int:
         """Reescribe todas las notas .md desde el estado guardado."""

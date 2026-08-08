@@ -231,6 +231,9 @@ se actualizan a partir de ellos.
 | `kindle-sync libros --dump CARPETA` | Además guarda el HTML y capturas, para depurar |
 | `kindle-sync watch` | Vigila en primer plano (útil para depurar) |
 | `kindle-sync status` | Estado: destino, Kindle conectado, sesión, agente |
+| `kindle-sync limpiar` | Enseña qué títulos tienen ruido de webs de descarga |
+| `kindle-sync limpiar --aplicar` | Los renombra, fusionando duplicados y borrando notas viejas |
+| `kindle-sync config --set SECCION.CLAVE=VALOR` | Cambia un ajuste sin abrir el fichero |
 | `kindle-sync rebuild` | Regenera todos los `.md` desde el estado guardado |
 | `kindle-sync install-agent` / `uninstall-agent` | Arranque automático con launchd |
 
@@ -268,6 +271,21 @@ Detalles que importan:
   `<!-- kindle-sync:fin -->` se conserva intacto** — escribe ahí tus notas.
 - Nada se borra nunca: el historial vive en `~/.local/state/kindle-sync/books/`.
   Si pierdes el vault, `kindle-sync rebuild` lo reconstruye entero.
+
+## Títulos limpios
+
+Los libros descargados suelen arrastrar el nombre del fichero:
+«Radical Candor (Kim Scott) (z-library.sk, 1lib.sk, z-lib.sk)». Eso se limpia
+al leer, así que las notas nuevas ya salen bien. Para arreglar las que se
+escribieron antes:
+
+```bash
+kindle-sync limpiar            # enseña qué cambiaría
+kindle-sync limpiar --aplicar  # lo hace
+```
+
+Renombra la nota, mueve el estado, fusiona los libros que acaben con el mismo
+título y borra el fichero viejo — si no, el siguiente sync crearía duplicados.
 
 ## Configuración
 
