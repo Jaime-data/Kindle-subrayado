@@ -120,6 +120,7 @@ class Syncer:
             book = self.store.load(key)
             if book is None:
                 book = incoming_book
+                book.compactar()
                 nuevos = len(book.highlights)
                 cambiado = True
             else:
@@ -130,6 +131,13 @@ class Syncer:
                 # Un subrayado ya conocido puede enriquecerse (p. ej. le llega
                 # la nota desde la nube): también hay que reescribir la nota.
                 cambiado = nuevos > 0 or _snapshot(book) != antes
+
+            # El Kindle duplica un subrayado cada vez que lo extiendes.
+            if descartados := book.compactar():
+                nuevos = max(0, nuevos - len(descartados))
+                cambiado = True
+                log.debug("%s: %d versión(es) duplicada(s) colapsada(s)",
+                          book.title, len(descartados))
 
             if not cambiado and self.sink.path_for(book).exists():
                 continue
@@ -266,6 +274,26 @@ class Syncer:
         if cambios and not dry_run:
             self.escribir_indice()
         return cambios
+
+    def compactar_todo(self, dry_run: bool = False) -> list[tuple[str, int]]:
+        """Colapsa en los libros ya guardados las versiones duplicadas."""
+        resultado: list[tuple[str, int]] = []
+        for key in self.store.keys():
+            book = self.store.load(key)
+            if book is None:
+                continue
+            descartados = book.compactar()
+            if not descartados:
+                continue
+            resultado.append((book.title, len(descartados)))
+            if dry_run:
+                continue
+            self.store.save(key, book)
+            self.sink.write(book)
+
+        if resultado and not dry_run:
+            self.escribir_indice()
+        return resultado
 
     def rebuild(self) -> int:
         """Reescribe todas las notas .md desde el estado guardado."""

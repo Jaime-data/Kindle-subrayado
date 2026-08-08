@@ -102,6 +102,39 @@ class Highlight:
         return hashlib.sha1(base.encode("utf-8")).hexdigest()[:12]
 
     @property
+    def rango(self) -> tuple[int, int] | None:
+        """Posición inicial y final del subrayado, si se conocen."""
+        numeros = re.findall(r"\d+", (self.location or "").replace(".", ""))
+        if not numeros:
+            return None
+        inicio = int(numeros[0])
+        fin = int(numeros[-1]) if len(numeros) > 1 else inicio
+        return (inicio, max(inicio, fin))
+
+    def contiene(self, otro: "Highlight") -> bool:
+        """¿Este subrayado engloba al otro?
+
+        Al extender un subrayado, el Kindle escribe una entrada nueva en vez de
+        sustituir la anterior: quedan varias versiones del mismo párrafo, cada
+        una un poco más larga, más los fragmentos sueltos del final.
+        """
+        if self.uid == otro.uid or self.kind != otro.kind or self.kind == "bookmark":
+            return False
+        if normalize(self.book_title) != normalize(otro.book_title):
+            return False
+
+        mio, suyo = normalize(self.text), normalize(otro.text)
+        if len(suyo) >= len(mio) or suyo not in mio:
+            return False
+
+        # Exigir que las posiciones se toquen: la misma frase subrayada en dos
+        # sitios distintos del libro son dos subrayados, no una repetición.
+        a, b = self.rango, otro.rango
+        if a is None or b is None:
+            return True
+        return a[0] <= b[1] and b[0] <= a[1]
+
+    @property
     def sort_key(self) -> tuple[int, int, float]:
         loc = _first_int(self.location)
         page = _first_int(self.page)
@@ -149,6 +182,29 @@ class Book:
 
     def sorted_highlights(self) -> list[Highlight]:
         return sorted(self.highlights.values(), key=lambda h: h.sort_key)
+
+    def compactar(self) -> list[Highlight]:
+        """Elimina las versiones cortas de un subrayado extendido.
+
+        Devuelve los subrayados descartados. La versión que sobrevive es la
+        más larga, quedándose con la nota y la fecha de las que absorbe.
+        """
+        por_longitud = sorted(self.highlights.values(),
+                              key=lambda h: len(h.text), reverse=True)
+        descartados: list[Highlight] = []
+
+        for largo in por_longitud:
+            if largo.uid not in self.highlights:
+                continue                      # ya lo absorbió otro más largo
+            for corto in por_longitud:
+                if corto.uid not in self.highlights or corto.uid == largo.uid:
+                    continue
+                if largo.contiene(corto):
+                    self.highlights[largo.uid] = largo.merged_with(corto)
+                    largo = self.highlights[largo.uid]
+                    descartados.append(self.highlights.pop(corto.uid))
+
+        return descartados
 
 
 def group_by_book(highlights: Iterable[Highlight]) -> dict[str, Book]:

@@ -74,6 +74,11 @@ def main(argv: list[str] | None = None) -> int:
                           default=[], dest="asignaciones",
                           help="p. ej. --set usb.punto_montaje=auto")
 
+    p_compactar = sub.add_parser(
+        "compactar", help="colapsa los subrayados que el Kindle duplicó al extenderlos")
+    p_compactar.add_argument("--aplicar", action="store_true",
+                             help="hazlo de verdad (sin esto solo enseña qué cambiaría)")
+
     p_limpiar = sub.add_parser(
         "limpiar", help="quita de los títulos el ruido de las webs de descarga")
     p_limpiar.add_argument("--aplicar", action="store_true",
@@ -165,6 +170,20 @@ def _dispatch(args) -> int:
 
     if args.cmd == "correo":
         return _correo(conf, args)
+
+    if args.cmd == "compactar":
+        resultado = Syncer(conf).compactar_todo(dry_run=not args.aplicar)
+        if not resultado:
+            print("No hay subrayados duplicados.")
+            return 0
+        for titulo, cuantos in sorted(resultado, key=lambda p: -p[1]):
+            print(f"  {cuantos:>4} duplicado(s)  {titulo[:60]}")
+        total = sum(c for _, c in resultado)
+        if args.aplicar:
+            print(f"\n{total} subrayado(s) duplicados eliminados.")
+        else:
+            print(f"\n{total} subrayado(s) se eliminarían. Repite con --aplicar.")
+        return 0
 
     if args.cmd == "limpiar":
         cambios = Syncer(conf).limpiar_titulos(dry_run=not args.aplicar)

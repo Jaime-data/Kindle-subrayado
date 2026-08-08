@@ -235,6 +235,8 @@ se actualizan a partir de ellos.
 | `kindle-sync modelos` | Lista los modelos que admite tu cuenta de OpenAI |
 | `kindle-sync clasificar --rehacer` | Reclasifica también los que ya tienen tema |
 | `kindle-sync indice` | Regenera la nota índice con el mapa mental por temas |
+| `kindle-sync compactar` | Enseña cuántos subrayados duplicados hay |
+| `kindle-sync compactar --aplicar` | Colapsa las versiones duplicadas de cada subrayado |
 | `kindle-sync limpiar` | Enseña qué títulos tienen ruido de webs de descarga |
 | `kindle-sync limpiar --aplicar` | Los renombra, fusionando duplicados y borrando notas viejas |
 | `kindle-sync config --set SECCION.CLAVE=VALOR` | Cambia un ajuste sin abrir el fichero |
@@ -364,6 +366,25 @@ escrito ahí manda siempre — también sobre la IA:
 "The Hard Thing About Hard Things" = "Liderazgo y equipos"
 "Storyworthy" = "Creatividad e ideas"
 ```
+
+## Subrayados duplicados
+
+Cuando extiendes un subrayado en el Kindle, el aparato **no sustituye** la
+entrada anterior: escribe una nueva. Al final acabas con cuatro versiones del
+mismo párrafo, cada una un poco más larga, más el fragmento suelto del final
+(«rey.»). Al sincronizar se colapsan solos: sobrevive la versión más larga,
+quedándose con la nota y la fecha de las que absorbe.
+
+Para arreglar lo que ya esté escrito:
+
+```bash
+kindle-sync compactar            # enseña cuántos se eliminarían
+kindle-sync compactar --aplicar  # lo hace
+```
+
+Solo se colapsa un subrayado dentro de otro **cuando las posiciones se tocan**:
+la misma frase subrayada en dos capítulos distintos son dos subrayados, no una
+repetición.
 
 ## Títulos limpios
 
