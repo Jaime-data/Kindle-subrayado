@@ -205,3 +205,13 @@ def test_editar_la_ultima_seccion_del_fichero(tmp_path):
 
     cfg.set_valores(path, "avisos", {"notificaciones": False})
     assert cfg.load(path).avisos.notificaciones is False
+
+
+def test_interpretar_valores_de_la_linea_de_comandos():
+    from kindle_sync.cli import _interpretar
+
+    assert _interpretar("true") is True
+    assert _interpretar("no") is False
+    assert _interpretar("300") == 300
+    assert _interpretar("auto") == "auto"
+    assert _interpretar('"/Volumes/Kindle 1"') == "/Volumes/Kindle 1"

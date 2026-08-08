@@ -63,6 +63,11 @@ def main(argv: list[str] | None = None) -> int:
     p_correo.add_argument("--probar", action="store_true",
                           help="conecta y enseña qué exportaciones encuentra")
 
+    p_config = sub.add_parser("config", help="ver o cambiar ajustes sin editar el fichero")
+    p_config.add_argument("--set", metavar="SECCION.CLAVE=VALOR", action="append",
+                          default=[], dest="asignaciones",
+                          help="p. ej. --set usb.punto_montaje=auto")
+
     sub.add_parser("watch", help="vigila en segundo plano y sincroniza solo")
     sub.add_parser("rebuild", help="regenera los .md desde el estado guardado")
     sub.add_parser("status", help="muestra configuración y estado actual")
@@ -134,6 +139,9 @@ def _dispatch(args) -> int:
         result = syncer.sync(sources)
         print(result)
         return 1 if result.errores and not result.nuevos else 0
+
+    if args.cmd == "config":
+        return _config(conf, args.asignaciones)
 
     if args.cmd == "correo":
         return _correo(conf, args)
@@ -300,6 +308,38 @@ def _lector(dump: Path | None) -> int:
     if dump:
         print(f"\nVolcado guardado en {dump}")
     return 0
+
+
+def _config(conf: cfg.Config, asignaciones: list[str]) -> int:
+    if not asignaciones:
+        print(cfg.CONFIG_FILE.read_text(encoding="utf-8"))
+        return 0
+
+    for asignacion in asignaciones:
+        if "=" not in asignacion or "." not in asignacion.split("=", 1)[0]:
+            print(f"error: formato esperado SECCION.CLAVE=VALOR, no «{asignacion}»",
+                  file=sys.stderr)
+            return 2
+        ruta, bruto = asignacion.split("=", 1)
+        seccion, clave = ruta.split(".", 1)
+        cambios = cfg.set_valores(cfg.CONFIG_FILE, seccion.strip(),
+                                  {clave.strip(): _interpretar(bruto.strip())})
+        for linea in cambios:
+            print(f"[{seccion.strip()}] {linea}")
+
+    cfg.load()  # valida que el fichero sigue siendo legible
+    return 0
+
+
+def _interpretar(bruto: str):
+    """Convierte el texto de la línea de comandos al tipo que toca."""
+    if bruto.lower() in ("true", "sí", "si", "yes"):
+        return True
+    if bruto.lower() in ("false", "no"):
+        return False
+    if bruto.isdigit():
+        return int(bruto)
+    return bruto.strip("'\"")
 
 
 def _correo(conf: cfg.Config, args) -> int:
